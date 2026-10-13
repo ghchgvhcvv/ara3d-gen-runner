@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Gen — Character Generator</title>
+    <link rel="stylesheet" href="/src/app/style.css" />
+  </head>
+  <body>
+    <aside id="panel">
+      <header>
+        <h1>3D Gen <span>characters</span></h1>
+        <div class="row">
+          <select id="preset"></select>
+          <button id="randomize" title="Random character">🎲 Randomize</button>
+        </div>
+        <div class="row">
+          <label class="grow">Name <input id="name" type="text" /></label>
+          <label>Seed <input id="seed" type="number" min="0" step="1" /></label>
+        </div>
+      </header>
+      <div id="controls"></div>
+    </aside>
+    <main>
+      <canvas id="viewport"></canvas>
+      <div id="stats"></div>
+      <div id="view-tools">
+        <label><input type="checkbox" id="wireframe" /> Wireframe</label>
+        <label><input type="checkbox" id="skeleton" /> Skeleton</label>
+      </div>
+      <div id="export">
+        <span>Export</span>
+        <button data-format="glb">GLB</button>
+        <button data-format="fbx">FBX</button>
+        <button data-format="obj">OBJ</button>
+        <button data-format="zip" class="primary">ZIP (all)</button>
+      </div>
+    </main>
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>
