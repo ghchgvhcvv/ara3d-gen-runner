@@ -1,4 +1,4 @@
-/** Binary glTF 2.0 (.glb) writer. One mesh, one primitive per material. */
+/** Binary glTF 2.0 (.glb) writer with embedded textures. One primitive per material. */
 import type { MeshData } from '../core/mesh';
 import { hexToRgb, srgbToLinear } from '../core/math';
 
@@ -8,19 +8,21 @@ const FLOAT = 5126;
 const UNSIGNED_SHORT = 5123;
 const UNSIGNED_INT = 5125;
 
-export function exportGLB(mesh: MeshData, name = 'Character'): Uint8Array {
+export const mimeOf = (file: string) => (file.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+
+export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Uint8Array>): Uint8Array {
   const chunks: Uint8Array[] = [];
   const bufferViews: object[] = [];
   const accessors: object[] = [];
   let offset = 0;
 
-  const addView = (data: Uint8Array, target: number) => {
+  const addView = (data: Uint8Array, target?: number) => {
     const pad = (4 - (offset % 4)) % 4;
     if (pad) {
       chunks.push(new Uint8Array(pad));
       offset += pad;
     }
-    bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: data.byteLength, target });
+    bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: data.byteLength, ...(target ? { target } : {}) });
     chunks.push(data);
     offset += data.byteLength;
     return bufferViews.length - 1;
@@ -62,14 +64,38 @@ export function exportGLB(mesh: MeshData, name = 'Character'): Uint8Array {
     return { attributes: { POSITION, NORMAL, TEXCOORD_0 }, indices: accessors.length - 1, material: g.material, mode: 4 };
   });
 
-  const materials = mesh.materials.map((m) => ({
-    name: m.name,
-    pbrMetallicRoughness: {
-      baseColorFactor: [...hexToRgb(m.color).map(srgbToLinear), 1],
-      metallicFactor: m.metalness,
-      roughnessFactor: m.roughness,
-    },
-  }));
+  // Images / textures
+  const images: object[] = [];
+  const texIndex = new Map<string, number>();
+  const tex = (file?: string) => {
+    if (!file) return undefined;
+    const data = textures.get(file);
+    if (!data) return undefined;
+    let i = texIndex.get(file);
+    if (i === undefined) {
+      images.push({ name: file, mimeType: mimeOf(file), bufferView: addView(data) });
+      i = images.length - 1;
+      texIndex.set(file, i);
+    }
+    return { index: i };
+  };
+
+  const materials = mesh.materials.map((m) => {
+    const base = tex(m.map);
+    const normal = tex(m.normalMap);
+    return {
+      name: m.name,
+      pbrMetallicRoughness: {
+        baseColorFactor: [...hexToRgb(m.color).map(srgbToLinear), 1],
+        metallicFactor: m.metalness,
+        roughnessFactor: m.roughness,
+        ...(base ? { baseColorTexture: base } : {}),
+      },
+      ...(normal ? { normalTexture: normal } : {}),
+      ...(m.alpha === 'mask' ? { alphaMode: 'MASK', alphaCutoff: 0.5 } : m.alpha === 'blend' ? { alphaMode: 'BLEND' } : {}),
+      ...(m.doubleSided ? { doubleSided: true } : {}),
+    };
+  });
 
   const json = {
     asset: { version: '2.0', generator: '3d-gen character generator' },
@@ -78,6 +104,13 @@ export function exportGLB(mesh: MeshData, name = 'Character'): Uint8Array {
     nodes: [{ name, mesh: 0 }],
     meshes: [{ name, primitives }],
     materials,
+    ...(images.length
+      ? {
+          images,
+          samplers: [{ magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 }],
+          textures: images.map((_, i) => ({ sampler: 0, source: i })),
+        }
+      : {}),
     accessors,
     bufferViews,
     buffers: [{ byteLength: offset }],

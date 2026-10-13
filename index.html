@@ -9,7 +9,7 @@
   <body>
     <aside id="panel">
       <header>
-        <h1>3D Gen <span>characters</span></h1>
+        <h1>3D Gen <span>realistic humans</span></h1>
         <div class="row">
           <select id="preset"></select>
           <button id="randomize" title="Random character">🎲 Randomize</button>
@@ -23,16 +23,18 @@
     </aside>
     <main>
       <canvas id="viewport"></canvas>
+      <div id="loading">Loading character assets…</div>
       <div id="stats"></div>
       <div id="view-tools">
         <label><input type="checkbox" id="wireframe" /> Wireframe</label>
         <label><input type="checkbox" id="skeleton" /> Skeleton</label>
+        <label><input type="checkbox" id="face" /> Face close-up</label>
       </div>
       <div id="export">
         <span>Export</span>
         <button data-format="glb">GLB</button>
         <button data-format="fbx">FBX</button>
-        <button data-format="obj">OBJ</button>
+        <button data-format="obj">OBJ (+textures)</button>
         <button data-format="zip" class="primary">ZIP (all)</button>
       </div>
     </main>

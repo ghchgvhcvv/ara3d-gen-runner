@@ -1,116 +1,173 @@
-import { generateCharacter, type Character } from '../core/character';
+import { AssetLibrary, fetchSource, type CatalogItem } from '../core/assets';
+import { autoSkin, buildHuman, type Character } from '../core/human';
 import { triangleCount } from '../core/mesh';
-import { DEFAULT_PARAMS, PRESETS, randomParams, type CharacterParams } from '../core/params';
-import { exportCharacter, type ExportFile, type ExportFormat } from '../export';
-import { SECTIONS, type Control } from './schema';
+import { ageToYears, DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, yearsToAge, type HumanParams } from '../core/params';
+import { exportCharacter, type ExportFormat } from '../export';
 import { Viewer } from './viewer';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  Object.assign(e, props);
+  e.append(...kids);
+  return e;
+}
 
-let params: CharacterParams = loadSaved() ?? { ...DEFAULT_PARAMS, name: 'Hero' };
-let current: Character;
-const viewer = new Viewer($<HTMLCanvasElement>('#viewport'));
-const inputs = new Map<keyof CharacterParams, { set: (v: unknown) => void }>();
+const lib = await new AssetLibrary(fetchSource(`${import.meta.env.BASE_URL}assets/`)).init();
+const cat = lib.catalog;
+const viewer = new Viewer($<HTMLCanvasElement>('#viewport'), (f) => lib.textureUrl(f));
 
-function loadSaved(): CharacterParams | null {
+let params: HumanParams = loadSaved() ?? { ...DEFAULT_PARAMS, name: 'Athletic man' };
+let current: Character | undefined;
+const sync: (() => void)[] = [];
+
+function loadSaved(): HumanParams | null {
   try {
-    const s = localStorage.getItem('3dgen.params');
+    const s = localStorage.getItem('3dgen.human');
     return s ? { ...DEFAULT_PARAMS, ...JSON.parse(s) } : null;
   } catch {
     return null;
   }
 }
 
-let pending = false;
+// --- Generation --------------------------------------------------------------
+
+let gen = 0;
+let queued = false;
 function regenerate() {
-  if (pending) return;
-  pending = true;
-  requestAnimationFrame(() => {
-    pending = false;
+  if (queued) return;
+  queued = true;
+  requestAnimationFrame(async () => {
+    queued = false;
+    const my = ++gen;
     const t0 = performance.now();
-    current = generateCharacter(params);
-    const ms = performance.now() - t0;
-    viewer.show(current);
+    const ch = await buildHuman(lib, params);
+    if (my !== gen) return; // a newer request superseded this one
+    current = ch;
+    viewer.show(ch);
+    $('#loading').hidden = true;
+    const skin = params.skin === 'auto' ? ` · skin: ${autoSkin(params, cat.skins).name}` : '';
     $('#stats').textContent =
-      `${triangleCount(current.mesh).toLocaleString()} tris · ${(current.mesh.positions.length / 3).toLocaleString()} verts · ` +
-      `${current.mesh.materials.length} materials · ${current.proportions.H.toFixed(2)} m · ${ms.toFixed(0)} ms`;
+      `${(ch.height * 100).toFixed(0)} cm · ${ageToYears(params.age).toFixed(0)} yrs · ` +
+      `${triangleCount(ch.mesh).toLocaleString()} tris · ${ch.mesh.materials.length} materials · ` +
+      `${(performance.now() - t0).toFixed(0)} ms${skin}`;
     try {
-      localStorage.setItem('3dgen.params', JSON.stringify(params));
+      localStorage.setItem('3dgen.human', JSON.stringify(params));
     } catch {
       /* storage unavailable */
     }
   });
 }
 
-function set<K extends keyof CharacterParams>(key: K, value: CharacterParams[K]) {
-  params = { ...params, [key]: value };
+function set(patch: Partial<HumanParams>) {
+  params = { ...params, ...patch };
   regenerate();
 }
 
-function buildControl(c: Control): HTMLElement {
-  const row = document.createElement('div');
-  row.className = 'ctl' + (c.type === 'range' ? '' : ' wide');
-  const label = document.createElement('span');
-  label.textContent = c.label;
-  row.append(label);
-  const key = c.key;
-  switch (c.type) {
-    case 'range': {
-      const input = Object.assign(document.createElement('input'), { type: 'range', min: c.min, max: c.max, step: c.step });
-      const out = document.createElement('output');
-      const show = (v: number) => (out.textContent = v.toFixed(2));
-      input.addEventListener('input', () => {
-        set(key, Number(input.value) as never);
-        show(Number(input.value));
-      });
-      inputs.set(key, { set: (v) => { input.value = String(v); show(v as number); } });
-      row.append(input, out);
-      break;
-    }
-    case 'select': {
-      const sel = document.createElement('select');
-      for (const o of c.options) sel.append(new Option(o, o));
-      sel.addEventListener('change', () => set(key, sel.value as never));
-      inputs.set(key, { set: (v) => (sel.value = String(v)) });
-      row.append(sel);
-      break;
-    }
-    case 'color': {
-      const input = Object.assign(document.createElement('input'), { type: 'color' });
-      input.addEventListener('input', () => set(key, input.value as never));
-      inputs.set(key, { set: (v) => (input.value = String(v)) });
-      row.append(input);
-      break;
-    }
-    case 'toggle': {
-      const input = Object.assign(document.createElement('input'), { type: 'checkbox' });
-      input.addEventListener('change', () => set(key, input.checked as never));
-      inputs.set(key, { set: (v) => (input.checked = Boolean(v)) });
-      row.append(input);
-      break;
-    }
+function replaceAll(p: HumanParams) {
+  params = p;
+  sync.forEach((f) => f());
+  regenerate();
+}
+
+// --- Controls ----------------------------------------------------------------
+
+function slider(label: string, get: () => number, put: (v: number) => void, min = 0, max = 1, step = 0.01, fmt = (v: number) => v.toFixed(2)) {
+  const input = el('input', { type: 'range', min: String(min), max: String(max), step: String(step) });
+  const out = el('output');
+  const show = () => { input.value = String(get()); out.textContent = fmt(get()); };
+  input.addEventListener('input', () => { put(Number(input.value)); out.textContent = fmt(Number(input.value)); });
+  input.addEventListener('dblclick', () => { put(min < 0 ? 0 : (min + max) / 2); show(); });
+  sync.push(show);
+  show();
+  return el('div', { className: 'ctl' }, el('span', { textContent: label }), input, out);
+}
+
+function color(label: string, key: 'skinTint' | 'hairTint' | 'outfitTint') {
+  const input = el('input', { type: 'color' });
+  input.addEventListener('input', () => set({ [key]: input.value }));
+  sync.push(() => (input.value = params[key]));
+  input.value = params[key];
+  return el('div', { className: 'ctl wide' }, el('span', { textContent: label }), input);
+}
+
+function picker(items: CatalogItem[], key: keyof HumanParams, extra: { id: string; name: string }[] = []) {
+  const grid = el('div', { className: 'picker' });
+  const buttons = new Map<string, HTMLButtonElement>();
+  for (const it of [...extra, ...items]) {
+    const thumb = 'thumb' in it && it.thumb ? el('img', { src: lib.source.url!(it.thumb as string), alt: '', loading: 'lazy' }) : it.name;
+    const b = el('button', { title: it.name }, thumb, el('span', { className: 'cap', textContent: it.name }));
+    b.addEventListener('click', () => set({ [key]: it.id }));
+    buttons.set(it.id, b);
+    grid.append(b);
   }
-  return row;
+  const show = () => buttons.forEach((b, id) => b.classList.toggle('on', params[key] === id));
+  sync.push(show);
+  show();
+  // Cheap reactivity: re-highlight after any change.
+  grid.addEventListener('click', () => requestAnimationFrame(show));
+  return grid;
 }
 
-function syncInputs() {
-  for (const [k, i] of inputs) i.set(params[k]);
-  $<HTMLInputElement>('#name').value = params.name;
-  $<HTMLInputElement>('#seed').value = String(params.seed);
+function section(title: string, open: boolean, ...kids: Node[]) {
+  const d = el('details', { open });
+  d.append(el('summary', { textContent: title }), el('div', {}, ...kids));
+  return d;
 }
 
-// --- Panel -------------------------------------------------------------------
+const NONE = [{ id: 'none', name: 'None' }];
+const macro = (label: string, key: keyof HumanParams) =>
+  slider(label, () => params[key] as number, (v) => set({ [key]: v }));
 
 const controls = $('#controls');
-for (const sec of SECTIONS) {
-  const d = document.createElement('details');
-  d.open = !!sec.open;
-  d.innerHTML = `<summary>${sec.title}</summary>`;
-  const body = document.createElement('div');
-  sec.controls.forEach((c) => body.append(buildControl(c)));
-  d.append(body);
-  controls.append(d);
+controls.append(
+  section('Body', true,
+    slider('Gender', () => params.gender, (v) => set({ gender: v }), 0, 1, 0.01, (v) => (v < 0.35 ? 'female' : v > 0.65 ? 'male' : 'mixed')),
+    slider('Age', () => ageToYears(params.age), (v) => set({ age: yearsToAge(v) }), 12, 90, 1, (v) => `${v.toFixed(0)} y`),
+    macro('Muscle', 'muscle'), macro('Weight', 'weight'), macro('Height', 'height'), macro('Proportions', 'proportions'),
+    macro('Breast size', 'breastSize'), macro('Breast firmness', 'breastFirmness'),
+  ),
+  section('Ethnicity', false,
+    el('div', { className: 'hint', textContent: 'Blended mix; also picks the matching skin texture in Auto mode.' }),
+    macro('African', 'african'), macro('Asian', 'asian'), macro('Caucasian', 'caucasian'),
+  ),
+  section('Skin & eyes', true,
+    picker(cat.skins, 'skin', [{ id: 'auto', name: 'Auto' }]), color('Skin tint', 'skinTint'),
+    el('div', { className: 'sub', textContent: 'Eyes' }), picker(cat.eyes, 'eyes'),
+    el('div', { className: 'sub', textContent: 'Eyebrows' }), picker(cat.eyebrows, 'eyebrows', NONE),
+    el('div', { className: 'sub', textContent: 'Eyelashes' }), picker(cat.eyelashes, 'eyelashes', NONE),
+  ),
+  section('Hair', true, picker(cat.hair, 'hair', NONE), color('Hair tint', 'hairTint')),
+  section('Clothing', true,
+    picker(cat.outfits, 'outfit'), color('Outfit tint', 'outfitTint'),
+    el('div', { className: 'sub', textContent: 'Shoes' }), picker(cat.shoes, 'shoes', NONE),
+    el('div', { className: 'sub', textContent: 'Hat' }), picker(cat.hats, 'hat', NONE),
+  ),
+);
+
+// Detail sliders, grouped like MakeHuman: one section per category.
+const categories = new Map<string, Node[]>();
+for (const g of cat.sliders) {
+  const list = categories.get(g.category) ?? [];
+  list.push(el('div', { className: 'sub', textContent: g.group }));
+  for (const s of g.sliders)
+    list.push(
+      slider(s.label, () => params.modifiers[s.id] ?? 0, (v) => set({ modifiers: { ...params.modifiers, [s.id]: v } }), s.bipolar ? -1 : 0, 1),
+    );
+  categories.set(g.category, list);
 }
+for (const [name, kids] of categories) controls.append(section(`${name} details`, false, ...kids));
+
+const reset = el('button', { textContent: 'Reset detail sliders' });
+reset.addEventListener('click', () => replaceAll({ ...params, modifiers: {} }));
+const detail = el('select');
+for (const d of DETAILS) detail.append(new Option({ low: 'Low (game LOD, ~5k tris)', medium: 'Medium (~30k tris)', high: 'High / HD (~120k tris, subdivided)' }[d], d));
+detail.addEventListener('change', () => set({ detail: detail.value as HumanParams['detail'] }));
+sync.push(() => (detail.value = params.detail));
+detail.value = params.detail;
+controls.append(section('Output', true, el('div', { className: 'ctl wide' }, el('span', { textContent: 'Detail' }), detail), reset));
+
+// --- Header ------------------------------------------------------------------
 
 const presetSel = $<HTMLSelectElement>('#preset');
 presetSel.append(new Option('Presets…', ''));
@@ -118,53 +175,53 @@ for (const name of Object.keys(PRESETS)) presetSel.append(new Option(name, name)
 presetSel.addEventListener('change', () => {
   const name = presetSel.value;
   if (!name) return;
-  params = { ...DEFAULT_PARAMS, ...PRESETS[name], name };
   presetSel.value = '';
-  syncInputs();
-  regenerate();
+  replaceAll({ ...DEFAULT_PARAMS, ...PRESETS[name], name, detail: params.detail });
 });
 
-/** Keep output settings when randomizing so a low-poly workflow stays low-poly. */
-const keepOutput = () => ({ detail: params.detail, pose: params.pose, flatShading: params.flatShading, fingers: params.fingers });
+const nameInput = $<HTMLInputElement>('#name');
+const seedInput = $<HTMLInputElement>('#seed');
+sync.push(() => { nameInput.value = params.name; seedInput.value = String(params.seed); });
+nameInput.addEventListener('input', () => (params = { ...params, name: nameInput.value }));
+const randomize = (seed: number) => replaceAll({ ...randomParams(seed, cat), detail: params.detail, name: `character_${seed}` });
+$('#randomize').addEventListener('click', () => randomize(Math.floor(Math.random() * 1e6)));
+seedInput.addEventListener('change', () => randomize(Number(seedInput.value) || 0));
 
-$('#randomize').addEventListener('click', () => {
-  const seed = Math.floor(Math.random() * 1e6);
-  params = { ...randomParams(seed), ...keepOutput(), name: `character_${seed}` };
-  syncInputs();
-  regenerate();
-});
-$<HTMLInputElement>('#seed').addEventListener('change', (e) => {
-  const seed = Number((e.target as HTMLInputElement).value) || 0;
-  params = { ...randomParams(seed), ...keepOutput(), name: params.name };
-  syncInputs();
-  regenerate();
-});
-$<HTMLInputElement>('#name').addEventListener('input', (e) => {
-  params = { ...params, name: (e.target as HTMLInputElement).value };
-});
 $<HTMLInputElement>('#wireframe').addEventListener('change', (e) => viewer.setWireframe((e.target as HTMLInputElement).checked));
 $<HTMLInputElement>('#skeleton').addEventListener('change', (e) => viewer.setSkeleton((e.target as HTMLInputElement).checked));
+$<HTMLInputElement>('#face').addEventListener('change', (e) => viewer.focusFace((e.target as HTMLInputElement).checked));
 
 // --- Export ------------------------------------------------------------------
 
-function download(file: ExportFile) {
-  const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.mime }));
-  const a = Object.assign(document.createElement('a'), { href: url, download: file.name });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-}
-
 document.querySelectorAll<HTMLButtonElement>('#export button').forEach((btn) =>
   btn.addEventListener('click', async () => {
-    const format = btn.dataset.format as ExportFormat;
-    const previewPng = format === 'zip' ? await viewer.snapshot() : undefined;
-    const files = exportCharacter(current, format, { previewPng });
-    // OBJ yields .obj + .mtl; stagger downloads so browsers don't drop the second one.
-    files.forEach((f, i) => setTimeout(() => download(f), i * 300));
+    if (!current) return;
+    const all = document.querySelectorAll<HTMLButtonElement>('#export button');
+    all.forEach((b) => (b.disabled = true));
+    const label = btn.textContent;
+    btn.textContent = 'Exporting…';
+    try {
+      const format = btn.dataset.format as ExportFormat;
+      const previewPng = format === 'zip' ? await viewer.snapshot() : undefined;
+      const file = await exportCharacter(lib, current, format, { previewPng });
+      const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.mime }));
+      const a = el('a', { href: url, download: file.name });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) {
+      alert(`Export failed: ${(e as Error).message}`);
+    } finally {
+      btn.textContent = label;
+      all.forEach((b) => (b.disabled = false));
+    }
   }),
 );
 
-syncInputs();
+sync.forEach((f) => f());
 regenerate();
+if (location.hash === '#face') {
+  $<HTMLInputElement>('#face').checked = true;
+  viewer.focusFace(true);
+}

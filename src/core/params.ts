@@ -1,193 +1,161 @@
+import type { Catalog } from './assets';
 import { rng } from './math';
 
-export const HAIR_STYLES = ['bald', 'buzz', 'short', 'spiky', 'long', 'ponytail', 'bun', 'mohawk', 'afro'] as const;
-export const FACIAL_HAIR = ['none', 'mustache', 'goatee', 'beard'] as const;
-export const TOPS = ['tshirt', 'tank', 'longsleeve', 'none'] as const;
-export const BOTTOMS = ['pants', 'shorts', 'skirt'] as const;
-export const SHOES = ['sneakers', 'boots'] as const;
-export const HATS = ['none', 'cap', 'beanie', 'helmet'] as const;
-export const EARS = ['round', 'pointed'] as const;
-export const POSES = ['T', 'A'] as const;
 export const DETAILS = ['low', 'medium', 'high'] as const;
+export type Detail = (typeof DETAILS)[number];
 
-export interface CharacterParams {
+export interface HumanParams {
   name: string;
   seed: number;
-  // Body
-  height: number; // metres
-  masculinity: number; // 0 = feminine .. 1 = masculine
-  muscle: number; // 0..1
-  bodyFat: number; // 0..1
-  headScale: number; // 1 = realistic, ~2 = chibi
-  shoulderWidth: number; // multipliers around 1
-  hipWidth: number;
-  armLength: number;
-  legLength: number;
-  neckLength: number;
-  handSize: number;
-  footSize: number;
-  // Face
-  headWidth: number;
-  jawWidth: number;
-  eyeSize: number;
-  eyeSpacing: number;
-  noseSize: number;
-  earSize: number;
-  ears: (typeof EARS)[number];
-  // Hair
-  hairStyle: (typeof HAIR_STYLES)[number];
-  facialHair: (typeof FACIAL_HAIR)[number];
-  // Outfit
-  top: (typeof TOPS)[number];
-  bottom: (typeof BOTTOMS)[number];
-  shoes: (typeof SHOES)[number];
-  hat: (typeof HATS)[number];
-  belt: boolean;
-  gloves: boolean;
-  // Colours (sRGB hex)
-  skinColor: string;
-  hairColor: string;
-  eyeColor: string;
-  topColor: string;
-  bottomColor: string;
-  shoeColor: string;
-  accentColor: string;
+  // Macro body controls, 0..1 (MakeHuman conventions)
+  gender: number; // 0 female .. 1 male
+  age: number; // 0.1875 = 11y, 0.5 = 25y, 1 = 90y
+  muscle: number;
+  weight: number;
+  height: number;
+  proportions: number; // 0 uncommon .. 1 idealised
+  african: number;
+  asian: number;
+  caucasian: number;
+  breastSize: number;
+  breastFirmness: number;
+  /** Detail sliders: slider id -> value (-1..1 bipolar, 0..1 unipolar). */
+  modifiers: Record<string, number>;
+  // Appearance ('auto' / 'none' where noted)
+  skin: string; // skin id or 'auto'
+  skinTint: string;
+  eyes: string;
+  eyebrows: string; // id or 'none'
+  eyelashes: string;
+  hair: string;
+  hairTint: string;
+  outfit: string;
+  shoes: string;
+  hat: string;
+  outfitTint: string;
   // Output
-  pose: (typeof POSES)[number];
-  detail: (typeof DETAILS)[number];
-  flatShading: boolean;
-  fingers: boolean;
+  detail: Detail;
 }
 
-export const DEFAULT_PARAMS: CharacterParams = {
+export const DEFAULT_PARAMS: HumanParams = {
   name: 'character',
   seed: 1,
-  height: 1.78,
-  masculinity: 0.8,
-  muscle: 0.45,
-  bodyFat: 0.2,
-  headScale: 1.15,
-  shoulderWidth: 1,
-  hipWidth: 1,
-  armLength: 1,
-  legLength: 1,
-  neckLength: 1,
-  handSize: 1,
-  footSize: 1,
-  headWidth: 1,
-  jawWidth: 1,
-  eyeSize: 1.1,
-  eyeSpacing: 1,
-  noseSize: 1,
-  earSize: 1,
-  ears: 'round',
-  hairStyle: 'short',
-  facialHair: 'none',
-  top: 'tshirt',
-  bottom: 'pants',
-  shoes: 'sneakers',
+  gender: 1,
+  age: 0.5,
+  muscle: 0.6,
+  weight: 0.5,
+  height: 0.5,
+  proportions: 0.7,
+  african: 0.1,
+  asian: 0.1,
+  caucasian: 0.8,
+  breastSize: 0.5,
+  breastFirmness: 0.5,
+  modifiers: {},
+  skin: 'auto',
+  skinTint: '#ffffff',
+  eyes: 'brownlight',
+  eyebrows: 'eyebrow001',
+  eyelashes: 'eyelashes01',
+  hair: 'short02',
+  hairTint: '#ffffff',
+  outfit: 'male_casualsuit01',
+  shoes: 'shoes01',
   hat: 'none',
-  belt: true,
-  gloves: false,
-  skinColor: '#d9a07a',
-  hairColor: '#3b2a1e',
-  eyeColor: '#3f6fb0',
-  topColor: '#3d7dd8',
-  bottomColor: '#2e3440',
-  shoeColor: '#f1f1f1',
-  accentColor: '#6b4a2b',
-  pose: 'T',
+  outfitTint: '#ffffff',
   detail: 'medium',
-  flatShading: false,
-  fingers: true,
 };
 
-export const PRESETS: Record<string, Partial<CharacterParams>> = {
-  Hero: {},
-  Heroine: {
-    height: 1.68, masculinity: 0.1, muscle: 0.3, bodyFat: 0.25, hairStyle: 'ponytail',
-    hairColor: '#8a3b1f', topColor: '#c0392b', bottomColor: '#263238', shoes: 'boots',
-    shoeColor: '#4e342e', eyeColor: '#2e7d32', top: 'tank', jawWidth: 0.85,
+/** MakeHuman age value <-> years. */
+export function ageToYears(a: number): number {
+  if (a < 0.1875) return 1 + (a / 0.1875) * 10;
+  if (a < 0.5) return 11 + ((a - 0.1875) / 0.3125) * 14;
+  return 25 + ((a - 0.5) / 0.5) * 65;
+}
+export function yearsToAge(y: number): number {
+  if (y < 11) return ((y - 1) / 10) * 0.1875;
+  if (y < 25) return 0.1875 + ((y - 11) / 14) * 0.3125;
+  return 0.5 + ((y - 25) / 65) * 0.5;
+}
+
+export const PRESETS: Record<string, Partial<HumanParams>> = {
+  'Athletic man': {},
+  'Athletic woman': {
+    gender: 0, muscle: 0.6, weight: 0.45, height: 0.55, african: 0.15, asian: 0.15, caucasian: 0.7, breastSize: 0.55, hair: 'ponytail01',
+    outfit: 'female_sportsuit01', shoes: 'shoes03', eyebrows: 'eyebrow010', eyelashes: 'eyelashes02', eyes: 'green',
   },
-  Chibi: {
-    height: 1.2, headScale: 2.1, masculinity: 0.4, muscle: 0.1, bodyFat: 0.35, eyeSize: 1.7,
-    hairStyle: 'spiky', hairColor: '#f2c94c', topColor: '#ff7043', bottomColor: '#5c6bc0',
-    fingers: false, noseSize: 0.6,
+  'Businesswoman': {
+    gender: 0, age: 0.6, muscle: 0.45, weight: 0.5, height: 0.6, hair: 'bob02', outfit: 'female_elegantsuit01',
+    shoes: 'shoes02', eyebrows: 'eyebrow011', eyelashes: 'eyelashes03', african: 0.8, asian: 0.1, caucasian: 0.1,
   },
-  Brute: {
-    height: 2.0, masculinity: 1, muscle: 1, bodyFat: 0.5, shoulderWidth: 1.25, headScale: 0.95,
-    jawWidth: 1.3, hairStyle: 'mohawk', facialHair: 'beard', top: 'none', bottom: 'pants',
-    shoes: 'boots', skinColor: '#8d5524', hairColor: '#1b1b1b', bottomColor: '#5d4037',
-    shoeColor: '#3e2723', eyeSize: 0.85, belt: true, gloves: true,
+  'Heavy brute': {
+    gender: 1, age: 0.62, muscle: 0.95, weight: 0.85, height: 0.72, proportions: 0.4, african: 0.85, asian: 0.05, caucasian: 0.1, hair: 'none',
+    outfit: 'male_worksuit01', shoes: 'shoes04', eyebrows: 'eyebrow003',
+    modifiers: { 'head/head-fat': 0.4, 'chin/chin-width': 0.5, 'neck/neck-scale-horiz': 0.5, 'chin/chin-prominent': 0.4 },
   },
-  'Elf ranger': {
-    height: 1.82, masculinity: 0.45, muscle: 0.35, bodyFat: 0.1, ears: 'pointed', earSize: 1.3,
-    hairStyle: 'long', hairColor: '#e6d3a3', top: 'longsleeve', topColor: '#2e5e3a',
-    bottomColor: '#4b3b2a', shoes: 'boots', shoeColor: '#3a2a1a', skinColor: '#f1d1b5',
-    legLength: 1.08, eyeColor: '#6abf69', gloves: true, accentColor: '#7a5a34',
+  Elder: {
+    gender: 1, age: 0.95, muscle: 0.35, weight: 0.55, height: 0.4, hair: 'short04', outfit: 'male_elegantsuit01',
+    shoes: 'shoes02', hat: 'fedora01', eyebrows: 'eyebrow006', african: 0.1, asian: 0.1, caucasian: 0.8,
   },
-  Knight: {
-    masculinity: 0.9, muscle: 0.7, hat: 'helmet', facialHair: 'goatee', top: 'longsleeve',
-    topColor: '#7b8794', bottomColor: '#3c4650', shoes: 'boots', shoeColor: '#555b62',
-    gloves: true, accentColor: '#8a1c1c', hairStyle: 'short',
+  Teen: {
+    gender: 0.1, age: 0.42, muscle: 0.45, weight: 0.4, height: 0.5, hair: 'long01', outfit: 'female_casualsuit02',
+    shoes: 'shoes03', eyes: 'lightblue', african: 0.05, asian: 0.75, caucasian: 0.2,
   },
-  'Low-poly villager': {
-    detail: 'low', flatShading: true, fingers: false, masculinity: 0.6, bodyFat: 0.45,
-    hairStyle: 'short', facialHair: 'mustache', hat: 'beanie', top: 'longsleeve',
-    topColor: '#a1887f', bottomColor: '#6d4c41', shoes: 'boots', shoeColor: '#4e342e',
-    accentColor: '#c62828',
+  Detective: {
+    gender: 0.95, age: 0.65, muscle: 0.55, weight: 0.5, height: 0.55, african: 0.2, asian: 0.6, caucasian: 0.2, hair: 'short01', outfit: 'male_casualsuit05',
+    hat: 'fedora_cocked', shoes: 'shoes06', eyes: 'grey', eyebrows: 'eyebrow007',
   },
 };
 
-const SKIN = ['#f6d7c3', '#f1c27d', '#e0ac69', '#c68642', '#a0663a', '#8d5524', '#5c3a21', '#3d2615'];
-const HAIR = ['#0f0f0f', '#3b2a1e', '#6a4e2e', '#a67b5b', '#e6c27a', '#f2e3b3', '#b5452a', '#9e9e9e', '#5b3fa8', '#2a7ab0'];
-const EYES = ['#3f6fb0', '#5b8c3a', '#6b4423', '#3b2a1e', '#808b96', '#2e7d6f'];
-const CLOTH = ['#c0392b', '#2e86de', '#27ae60', '#8e44ad', '#f39c12', '#2c3e50', '#ecf0f1', '#7f8c8d', '#d35400', '#16a085', '#34495e', '#b03a2e', '#6d4c41', '#1e272e'];
+const pick = <T,>(r: () => number, a: readonly T[]): T => a[Math.floor(r() * a.length)];
 
-/** Random character from a seed. Keeps output settings (detail, pose...) from `base`. */
-export function randomParams(seed: number, base: CharacterParams = DEFAULT_PARAMS): CharacterParams {
+/** Random but plausible human. Keeps output settings from `base`. */
+export function randomParams(seed: number, cat: Catalog, base: HumanParams = DEFAULT_PARAMS): HumanParams {
   const r = rng(seed);
-  const pick = <T,>(a: readonly T[]): T => a[Math.floor(r() * a.length)];
   const range = (lo: number, hi: number) => lo + (hi - lo) * r();
-  const masculinity = r() < 0.5 ? range(0, 0.35) : range(0.65, 1);
-  const stylised = r() < 0.25;
-  const fem = masculinity < 0.5;
+  const bell = (s: number) => (r() + r() + r() - 1.5) * s; // ~normal, mean 0
+  const female = r() < 0.5;
+  const ids = (items: { id: string; tags: string[] }[], tag?: string) =>
+    items.filter((i) => !tag || i.tags.some((t) => t.toLowerCase() === tag) || !i.tags.some((t) => /^(male|female)$/i.test(t))).map((i) => i.id);
+  const FEMALE_HAIR = ['bob01', 'bob02', 'braid01', 'long01', 'ponytail01', 'afro01', 'short02'];
+  const MALE_HAIR = ['short01', 'short02', 'short03', 'short04', 'afro01', 'none'];
+  // Ethnic mix: usually dominated by one group.
+  const mix = [r() ** 3, r() ** 3, r() ** 3];
+  mix[Math.floor(r() * 3)] += 1;
+  const sum = mix[0] + mix[1] + mix[2];
+
+  const modifiers: Record<string, number> = {};
+  const sliders = cat.sliders.filter((g) => /face|head|nose|mouth|eye|ear|chin|cheek|forehead/i.test(g.category + g.group)).flatMap((g) => g.sliders);
+  for (let i = 0; i < 18 && sliders.length; i++) {
+    const s = pick(r, sliders);
+    modifiers[s.id] = s.bipolar ? Math.max(-1, Math.min(1, bell(0.55))) : range(0, 0.5);
+  }
+  const outfits = ids(cat.outfits, female ? 'female' : 'male');
   return {
     ...base,
     seed,
-    height: stylised ? range(1.1, 1.5) : range(1.6, 1.95),
-    masculinity,
-    muscle: range(0, 0.9),
-    bodyFat: range(0, 0.7),
-    headScale: stylised ? range(1.6, 2.2) : range(0.95, 1.25),
-    shoulderWidth: range(0.9, 1.15),
-    hipWidth: range(0.9, 1.15),
-    armLength: range(0.95, 1.05),
-    legLength: range(0.92, 1.08),
-    neckLength: range(0.85, 1.15),
-    handSize: range(0.9, 1.1),
-    footSize: range(0.9, 1.1),
-    headWidth: range(0.9, 1.1),
-    jawWidth: fem ? range(0.8, 1) : range(0.95, 1.3),
-    eyeSize: stylised ? range(1.4, 1.9) : range(0.9, 1.3),
-    eyeSpacing: range(0.9, 1.1),
-    noseSize: range(0.7, 1.3),
-    earSize: range(0.85, 1.2),
-    ears: r() < 0.15 ? 'pointed' : 'round',
-    hairStyle: pick(fem ? ['long', 'ponytail', 'bun', 'short', 'afro'] as const : HAIR_STYLES),
-    facialHair: fem ? 'none' : pick(FACIAL_HAIR),
-    top: pick(fem ? ['tshirt', 'tank', 'longsleeve'] as const : TOPS),
-    bottom: pick(fem ? BOTTOMS : ['pants', 'shorts'] as const),
-    shoes: pick(SHOES),
-    hat: r() < 0.3 ? pick(['cap', 'beanie', 'helmet'] as const) : 'none',
-    belt: r() < 0.5,
-    gloves: r() < 0.2,
-    skinColor: pick(SKIN),
-    hairColor: pick(HAIR),
-    eyeColor: pick(EYES),
-    topColor: pick(CLOTH),
-    bottomColor: pick(CLOTH),
-    shoeColor: pick(CLOTH),
-    accentColor: pick(CLOTH),
+    gender: female ? range(0, 0.15) : range(0.85, 1),
+    age: yearsToAge(range(18, 70)),
+    muscle: range(0.3, 0.9),
+    weight: range(0.3, 0.8),
+    height: range(0.3, 0.8),
+    proportions: range(0.4, 0.9),
+    african: mix[0] / sum,
+    asian: mix[1] / sum,
+    caucasian: mix[2] / sum,
+    breastSize: range(0.3, 0.8),
+    breastFirmness: range(0.3, 0.8),
+    modifiers,
+    skin: 'auto',
+    skinTint: '#ffffff',
+    eyes: pick(r, cat.eyes).id,
+    eyebrows: pick(r, cat.eyebrows).id,
+    eyelashes: pick(r, cat.eyelashes).id,
+    hair: pick(r, female ? FEMALE_HAIR : MALE_HAIR),
+    hairTint: '#ffffff',
+    outfit: outfits.length ? pick(r, outfits) : 'none',
+    shoes: pick(r, cat.shoes).id,
+    hat: r() < 0.15 && cat.hats.length ? pick(r, cat.hats).id : 'none',
+    outfitTint: '#ffffff',
   };
 }

@@ -1,142 +1,95 @@
-import { cross, dot, normalize, sub, type Vec3 } from './math';
+import type { PolyMesh } from './geometry';
+import { vertexNormals } from './geometry';
 
 export interface Material {
   name: string;
-  /** sRGB hex colour, e.g. "#c68642" */
+  /** sRGB hex colour; multiplies the texture when there is one. */
   color: string;
   roughness: number;
   metalness: number;
+  /** Texture file names (see AssetLibrary.texture). */
+  map?: string;
+  normalMap?: string;
+  alpha: 'opaque' | 'mask' | 'blend';
+  doubleSided: boolean;
 }
 
 export interface MeshGroup {
   material: number;
-  /** Triangle list into the vertex arrays. */
+  /** Triangle list (for GLB / real-time rendering). */
   indices: Uint32Array;
+  /** Original polygons (mostly quads) for FBX / OBJ: sizes + flattened vertex indices. */
+  polySizes: Uint8Array;
+  polyIndices: Uint32Array;
 }
 
 /**
- * Format-neutral triangle mesh. Every exporter and the viewer consume this.
- * Units are metres, +Y up, character faces +Z, feet on y = 0.
+ * Format-neutral mesh. Units are metres, +Y up, character faces +Z, feet on y = 0.
+ * Vertices are split at UV seams, so every vertex has exactly one uv.
  */
 export interface MeshData {
   positions: Float32Array;
   normals: Float32Array;
   uvs: Float32Array;
-  /** Primary bone index per vertex (into Skeleton.joints). Used for rigging later. */
-  bones: Uint16Array;
   groups: MeshGroup[];
   materials: Material[];
 }
 
-export class MeshBuilder {
+export function triangleCount(m: MeshData): number {
+  return m.groups.reduce((s, g) => s + g.indices.length / 3, 0);
+}
+
+/** Accumulates parts (each a PolyMesh + material) into one MeshData. */
+export class MeshAssembler {
   private pos: number[] = [];
   private nrm: number[] = [];
   private uv: number[] = [];
-  private bone: number[] = [];
-  private tris = new Map<number, number[]>();
+  private groups: MeshGroup[] = [];
   readonly materials: Material[] = [];
-  private byName = new Map<string, number>();
 
-  /** Register a material (by name) and return its index. */
-  material(m: Material): number {
-    const existing = this.byName.get(m.name);
-    if (existing !== undefined) return existing;
-    this.materials.push(m);
-    this.byName.set(m.name, this.materials.length - 1);
-    return this.materials.length - 1;
-  }
-
-  vertex(p: Vec3, n: Vec3, u: number, v: number, bone: number): number {
-    this.pos.push(p[0], p[1], p[2]);
-    this.nrm.push(n[0], n[1], n[2]);
-    this.uv.push(u, v);
-    this.bone.push(bone);
-    return this.bone.length - 1;
-  }
-
-  private p(i: number): Vec3 {
-    return [this.pos[i * 3], this.pos[i * 3 + 1], this.pos[i * 3 + 2]];
-  }
-  private n(i: number): Vec3 {
-    return [this.nrm[i * 3], this.nrm[i * 3 + 1], this.nrm[i * 3 + 2]];
-  }
-
-  /**
-   * Add a triangle. Winding is fixed up automatically so the face points the
-   * same way as `hint` (or the vertex normals when no hint is given).
-   * Degenerate triangles (e.g. at loft poles) are dropped.
-   */
-  tri(a: number, b: number, c: number, mat: number, hint?: Vec3): void {
-    const pa = this.p(a);
-    const g = cross(sub(this.p(b), pa), sub(this.p(c), pa));
-    if (dot(g, g) < 1e-20) return;
-    let ref = hint;
-    if (!ref) {
-      const na = this.n(a), nb = this.n(b), nc = this.n(c);
-      ref = [na[0] + nb[0] + nc[0], na[1] + nb[1] + nc[1], na[2] + nb[2] + nc[2]];
-    }
-    let list = this.tris.get(mat);
-    if (!list) this.tris.set(mat, (list = []));
-    if (dot(g, ref) < 0) list.push(a, c, b);
-    else list.push(a, b, c);
-  }
-
-  quad(a: number, b: number, c: number, d: number, mat: number, hint?: Vec3): void {
-    this.tri(a, b, c, mat, hint);
-    this.tri(a, c, d, mat, hint);
-  }
-
-  get vertexCount(): number {
-    return this.bone.length;
-  }
-
-  /** Finalise. `flat` un-welds every triangle and uses face normals (low-poly look). */
-  build(flat = false): MeshData {
-    // Drop materials that ended up with no triangles and compact indices.
-    const used = [...this.tris.keys()].filter((m) => this.tris.get(m)!.length > 0).sort((a, b) => a - b);
-    const materials = used.map((m) => this.materials[m]);
-
-    if (!flat) {
-      return {
-        positions: new Float32Array(this.pos),
-        normals: new Float32Array(this.nrm),
-        uvs: new Float32Array(this.uv),
-        bones: new Uint16Array(this.bone),
-        groups: used.map((m, i) => ({ material: i, indices: new Uint32Array(this.tris.get(m)!) })),
-        materials,
-      };
-    }
-
-    const pos: number[] = [], nrm: number[] = [], uv: number[] = [], bone: number[] = [];
-    const groups: MeshGroup[] = [];
-    used.forEach((m, gi) => {
-      const src = this.tris.get(m)!;
-      const idx: number[] = [];
-      for (let t = 0; t < src.length; t += 3) {
-        const [a, b, c] = [src[t], src[t + 1], src[t + 2]];
-        const pa = this.p(a);
-        const fn = normalize(cross(sub(this.p(b), pa), sub(this.p(c), pa)));
-        for (const v of [a, b, c]) {
-          idx.push(bone.length);
-          pos.push(...this.p(v));
-          nrm.push(...fn);
-          uv.push(this.uv[v * 2], this.uv[v * 2 + 1]);
-          bone.push(this.bone[v]);
+  add(part: PolyMesh, material: Material): void {
+    const N = vertexNormals(part);
+    const base = this.pos.length / 3;
+    const key = new Map<number, number>(); // (vertex, uv) -> output index
+    const nUV = part.uvs.length / 2;
+    const polyIdx: number[] = [];
+    const tris: number[] = [];
+    for (let f = 0, c = 0; f < part.faceSizes.length; f++) {
+      const n = part.faceSizes[f];
+      const out: number[] = [];
+      for (let k = 0; k < n; k++) {
+        const v = part.faceVerts[c + k], t = part.faceUVs[c + k];
+        const id = v * nUV + t;
+        let o = key.get(id);
+        if (o === undefined) {
+          o = base + key.size;
+          key.set(id, o);
+          this.pos.push(part.positions[v * 3], part.positions[v * 3 + 1], part.positions[v * 3 + 2]);
+          this.nrm.push(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]);
+          this.uv.push(part.uvs[t * 2], part.uvs[t * 2 + 1]);
         }
+        out.push(o);
       }
-      groups.push({ material: gi, indices: new Uint32Array(idx) });
+      polyIdx.push(...out);
+      for (let k = 1; k < n - 1; k++) tris.push(out[0], out[k], out[k + 1]);
+      c += n;
+    }
+    this.materials.push(material);
+    this.groups.push({
+      material: this.materials.length - 1,
+      indices: Uint32Array.from(tris),
+      polySizes: Uint8Array.from(part.faceSizes),
+      polyIndices: Uint32Array.from(polyIdx),
     });
+  }
+
+  build(): MeshData {
     return {
-      positions: new Float32Array(pos),
-      normals: new Float32Array(nrm),
-      uvs: new Float32Array(uv),
-      bones: new Uint16Array(bone),
-      groups,
-      materials,
+      positions: Float32Array.from(this.pos),
+      normals: Float32Array.from(this.nrm),
+      uvs: Float32Array.from(this.uv),
+      groups: this.groups,
+      materials: this.materials,
     };
   }
-}
-
-export function triangleCount(m: MeshData): number {
-  return m.groups.reduce((s, g) => s + g.indices.length / 3, 0);
 }

@@ -1,0 +1,13 @@
+The character assets in this folder (base mesh, morph targets, skeleton, skins,
+eyes, eyebrows, eyelashes, hair, clothes and proxy meshes) are derived from
+MakeHuman (http://www.makehumancommunity.org) and were explicitly released
+under CC0 1.0 Universal (public domain dedication) in September 2020 by:
+
+  Data Collection AB, https://www.datacollection.se
+  Joel Palmius
+  Jonas Hauquier
+
+CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
+
+Characters exported by 3d-gen may be used in commercial and non-commercial
+projects without attribution.

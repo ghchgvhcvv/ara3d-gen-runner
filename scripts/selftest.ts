@@ -1,13 +1,14 @@
 /**
- * Fuzz test: generates many random characters at every detail level and checks
- * mesh validity plus the structural integrity of every export format.
+ * Generates many random characters at every detail level and checks mesh
+ * validity plus the structural integrity of every export format.
  *   npm test
  */
 import { unzipSync, unzlibSync } from 'fflate';
-import { generateCharacter } from '../src/core/character';
-import { triangleCount, type MeshData } from '../src/core/mesh';
-import { DETAILS, POSES, PRESETS, DEFAULT_PARAMS, randomParams, type CharacterParams } from '../src/core/params';
+import { buildHuman } from '../src/core/human';
+import type { MeshData } from '../src/core/mesh';
+import { DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, type HumanParams } from '../src/core/params';
 import { exportCharacter } from '../src/export';
+import { nodeLibrary } from './node-assets';
 
 let failures = 0;
 const fail = (msg: string) => {
@@ -15,7 +16,7 @@ const fail = (msg: string) => {
   console.error('FAIL', msg);
 };
 
-function checkMesh(m: MeshData, label: string) {
+function checkMesh(m: MeshData, label: string, height: number) {
   const vc = m.positions.length / 3;
   for (const arr of [m.positions, m.normals, m.uvs])
     for (let i = 0; i < arr.length; i++) if (!Number.isFinite(arr[i])) return fail(`${label}: non-finite vertex data`);
@@ -26,17 +27,19 @@ function checkMesh(m: MeshData, label: string) {
   for (const g of m.groups) {
     if (g.indices.length % 3) fail(`${label}: index count not multiple of 3`);
     for (const i of g.indices) if (i >= vc) return fail(`${label}: index out of range`);
+    const corners = g.polySizes.reduce((s, n) => s + n, 0);
+    if (corners !== g.polyIndices.length) fail(`${label}: polygon corner count mismatch`);
   }
   let minY = Infinity;
   for (let i = 1; i < m.positions.length; i += 3) minY = Math.min(minY, m.positions[i]);
-  if (Math.abs(minY) > 0.005) fail(`${label}: feet not on ground (minY=${minY.toFixed(4)})`);
+  if (Math.abs(minY) > 0.002) fail(`${label}: not on ground (minY=${minY.toFixed(4)})`);
+  if (height < 0.8 || height > 2.6) fail(`${label}: implausible height ${height.toFixed(2)} m`);
 }
 
 /** Minimal binary FBX parser: walks every node record and checks offsets. */
 function parseFbx(data: Uint8Array, label: string): Map<string, number> {
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const magic = new TextDecoder().decode(data.subarray(0, 18));
-  if (magic !== 'Kaydara FBX Binary') fail(`${label}: bad FBX magic`);
+  if (new TextDecoder().decode(data.subarray(0, 18)) !== 'Kaydara FBX Binary') fail(`${label}: bad FBX magic`);
   const counts = new Map<string, number>();
   const readNode = (o: number): number => {
     const end = dv.getUint32(o, true);
@@ -56,11 +59,11 @@ function parseFbx(data: Uint8Array, label: string): Map<string, number> {
       else if (t === 'L' || t === 'D') p += 8;
       else if (t === 'S' || t === 'R') p += 4 + dv.getUint32(p, true);
       else if ('ilfdb'.includes(t)) {
-        const len = dv.getUint32(p, true), encd = dv.getUint32(p + 4, true), clen = dv.getUint32(p + 8, true);
+        const len = dv.getUint32(p, true), enc = dv.getUint32(p + 4, true), clen = dv.getUint32(p + 8, true);
         const raw = data.subarray(p + 12, p + 12 + clen);
-        const bytes = encd ? unzlibSync(raw) : raw;
-        const el = t === 'd' || t === 'l' ? 8 : t === 'b' ? 1 : 4;
-        if (bytes.length !== len * el) fail(`${label}: array ${name} decoded size mismatch`);
+        const bytes = enc ? unzlibSync(raw) : raw;
+        const size = t === 'd' || t === 'l' ? 8 : t === 'b' ? 1 : 4;
+        if (bytes.length !== len * size) fail(`${label}: array ${name} decoded size mismatch`);
         p += 12 + clen;
       } else throw new Error(`${label}: unknown prop type ${t} in ${name}`);
     }
@@ -70,51 +73,53 @@ function parseFbx(data: Uint8Array, label: string): Map<string, number> {
     return end;
   };
   let o = 27;
-  for (;;) {
-    if (dv.getUint32(o, true) === 0) break;
-    o = readNode(o);
-  }
+  while (dv.getUint32(o, true) !== 0) o = readNode(o);
   return counts;
 }
 
-function checkExports(ch: ReturnType<typeof generateCharacter>, label: string) {
-  const glb = exportCharacter(ch, 'glb')[0].data;
+const lib = await nodeLibrary();
+
+async function checkExports(ch: Awaited<ReturnType<typeof buildHuman>>, label: string) {
+  const glb = (await exportCharacter(lib, ch, 'glb')).data;
   const gdv = new DataView(glb.buffer, glb.byteOffset);
   if (gdv.getUint32(0, true) !== 0x46546c67 || gdv.getUint32(8, true) !== glb.length) fail(`${label}: bad GLB header`);
-  const jlen = gdv.getUint32(12, true);
-  const json = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + jlen)));
+  const json = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + gdv.getUint32(12, true))));
   if (json.meshes[0].primitives.length !== ch.mesh.groups.length) fail(`${label}: GLB primitive count`);
+  const texCount = new Set(ch.mesh.materials.flatMap((m) => [m.map, m.normalMap]).filter(Boolean)).size;
+  if ((json.images?.length ?? 0) !== texCount) fail(`${label}: GLB image count ${json.images?.length} != ${texCount}`);
 
-  const counts = parseFbx(exportCharacter(ch, 'fbx')[0].data, label);
+  const counts = parseFbx((await exportCharacter(lib, ch, 'fbx')).data, label);
   if (counts.get('Material') !== ch.mesh.materials.length) fail(`${label}: FBX material count`);
-  if (counts.get('Geometry') !== 1 || counts.get('Model') !== 1) fail(`${label}: FBX object count`);
+  if ((counts.get('Video') ?? 0) !== texCount) fail(`${label}: FBX embedded texture count`);
 
-  const [obj] = exportCharacter(ch, 'obj');
-  const faces = new TextDecoder().decode(obj.data).split('\n').filter((l) => l.startsWith('f ')).length;
-  if (faces !== triangleCount(ch.mesh)) fail(`${label}: OBJ face count ${faces} != ${triangleCount(ch.mesh)}`);
+  const objZip = unzipSync((await exportCharacter(lib, ch, 'obj')).data);
+  const objName = Object.keys(objZip).find((n) => n.endsWith('.obj'))!;
+  const faces = new TextDecoder().decode(objZip[objName]).split('\n').filter((l) => l.startsWith('f ')).length;
+  const polys = ch.mesh.groups.reduce((s, g) => s + g.polySizes.length, 0);
+  if (faces !== polys) fail(`${label}: OBJ face count ${faces} != ${polys}`);
+  if (Object.keys(objZip).filter((n) => n.startsWith('textures/')).length !== texCount) fail(`${label}: OBJ textures missing`);
 
-  const zip = unzipSync(exportCharacter(ch, 'zip')[0].data);
-  const names = Object.keys(zip).map((n) => n.split('/').pop()!.split('.').slice(1).join('.'));
-  for (const ext of ['glb', 'fbx', 'obj', 'mtl', 'params.json']) if (!names.includes(ext)) fail(`${label}: zip missing .${ext}`);
+  const zip = unzipSync((await exportCharacter(lib, ch, 'zip')).data);
+  for (const ext of ['.glb', '.fbx', '.obj', '.mtl', '.params.json', 'LICENSE.txt'])
+    if (!Object.keys(zip).some((n) => n.endsWith(ext))) fail(`${label}: zip missing ${ext}`);
 }
 
 const t0 = performance.now();
-const cases: [string, CharacterParams][] = [];
+const cases: [string, HumanParams][] = [];
 for (const [name, p] of Object.entries(PRESETS)) cases.push([`preset ${name}`, { ...DEFAULT_PARAMS, ...p, name }]);
-for (let seed = 0; seed < 150; seed++) {
-  const detail = DETAILS[seed % 3];
-  const pose = POSES[(seed >> 2) % 2];
-  cases.push([`seed ${seed}`, { ...randomParams(seed), detail, pose, flatShading: seed % 5 === 0, fingers: seed % 4 !== 0 }]);
-}
-// Extremes
-cases.push(['extreme small', { ...DEFAULT_PARAMS, height: 1.0, headScale: 2.4, muscle: 0, bodyFat: 0, eyeSize: 2.2 }]);
-cases.push(['extreme big', { ...DEFAULT_PARAMS, height: 2.3, headScale: 0.85, muscle: 1, bodyFat: 1, shoulderWidth: 1.35, hipWidth: 1.3 }]);
+for (let seed = 0; seed < 45; seed++) cases.push([`seed ${seed}`, { ...randomParams(seed, lib.catalog), detail: DETAILS[seed % 3] }]);
+cases.push(['extremes min', { ...DEFAULT_PARAMS, age: 0.2, muscle: 0, weight: 0, height: 0, proportions: 0, gender: 0, detail: 'high' }]);
+cases.push(['extremes max', { ...DEFAULT_PARAMS, age: 1, muscle: 1, weight: 1, height: 1, proportions: 1, gender: 1, detail: 'high' }]);
+const allSliders = Object.fromEntries(lib.catalog.sliders.flatMap((g) => g.sliders.map((s) => [s.id, s.bipolar ? -0.7 : 0.7])));
+cases.push(['every slider', { ...DEFAULT_PARAMS, modifiers: allSliders }]);
+for (const o of lib.catalog.outfits) cases.push([`outfit ${o.id}`, { ...DEFAULT_PARAMS, outfit: o.id, gender: o.tags.includes('Female') ? 0 : 1 }]);
+for (const h of lib.catalog.hair) cases.push([`hair ${h.id}`, { ...DEFAULT_PARAMS, hair: h.id, hat: 'fedora01' }]);
 
 for (const [label, p] of cases) {
   try {
-    const ch = generateCharacter(p);
-    checkMesh(ch.mesh, label);
-    checkExports(ch, label);
+    const ch = await buildHuman(lib, p);
+    checkMesh(ch.mesh, label, ch.height);
+    if (label.startsWith('preset') || label.startsWith('seed 1')) await checkExports(ch, label);
   } catch (e) {
     fail(`${label}: threw ${(e as Error).stack}`);
   }

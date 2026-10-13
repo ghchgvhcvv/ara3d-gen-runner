@@ -144,31 +144,35 @@ const objName = (name: string, cls: string) => `${name}\x00\x01${cls}`;
 
 const CM = 100; // metres -> centimetres
 
-export function exportFBX(mesh: MeshData, name = 'Character'): Uint8Array {
+export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Uint8Array>): Uint8Array {
   let nextId = 1_000_000;
   const id = () => nextId++;
   const geomId = id(), modelId = id(), docId = id();
   const matIds = mesh.materials.map(() => id());
 
-  // Geometry: triangles, in group (material) order.
-  const tris: number[] = [];
+  // Geometry: original polygons (quads), in group (material) order.
+  const corners: number[] = [];
+  const sizes: number[] = [];
   const polyMat: number[] = [];
   for (const g of mesh.groups) {
-    for (let i = 0; i < g.indices.length; i += 3) {
-      tris.push(g.indices[i], g.indices[i + 1], g.indices[i + 2]);
+    for (const v of g.polyIndices) corners.push(v);
+    for (const n of g.polySizes) {
+      sizes.push(n);
       polyMat.push(g.material);
     }
   }
   const vertices = new Float64Array(mesh.positions.length);
   for (let i = 0; i < vertices.length; i++) vertices[i] = mesh.positions[i] * CM;
-  const pvi = new Int32Array(tris.length);
-  const normals = new Float64Array(tris.length * 3);
-  for (let i = 0; i < tris.length; i++) {
-    const v = tris[i];
-    pvi[i] = i % 3 === 2 ? -v - 1 : v; // last vertex of each polygon is bit-negated
-    normals[i * 3] = mesh.normals[v * 3];
-    normals[i * 3 + 1] = mesh.normals[v * 3 + 1];
-    normals[i * 3 + 2] = mesh.normals[v * 3 + 2];
+  const pvi = new Int32Array(corners.length);
+  const normals = new Float64Array(corners.length * 3);
+  for (let p = 0, c = 0; p < sizes.length; p++) {
+    for (let k = 0; k < sizes[p]; k++, c++) {
+      const v = corners[c];
+      pvi[c] = k === sizes[p] - 1 ? -v - 1 : v; // last vertex of each polygon is bit-negated
+      normals[c * 3] = mesh.normals[v * 3];
+      normals[c * 3 + 1] = mesh.normals[v * 3 + 1];
+      normals[c * 3 + 2] = mesh.normals[v * 3 + 2];
+    }
   }
 
   const layerEl = (type: string, children: FbxNode[]) => N(type, [I(0)], children);
@@ -190,7 +194,7 @@ export function exportFBX(mesh: MeshData, name = 'Character'): Uint8Array {
       N('MappingInformationType', [S('ByPolygonVertex')]),
       N('ReferenceInformationType', [S('IndexToDirect')]),
       N('UV', [Ad(Float64Array.from(mesh.uvs))]),
-      N('UVIndex', [Ai(Int32Array.from(tris))]),
+      N('UVIndex', [Ai(Int32Array.from(corners))]),
     ]),
     layerEl('LayerElementMaterial', [
       N('Version', [I(101)]),
@@ -243,6 +247,57 @@ export function exportFBX(mesh: MeshData, name = 'Character'): Uint8Array {
       ]),
     ]);
   });
+
+  // Embedded textures: one Video (holds the bytes) + one Texture per file.
+  const texObjs: FbxNode[] = [];
+  const texConn: FbxNode[] = [];
+  const texIds = new Map<string, number>();
+  const texture = (file: string) => {
+    let tid = texIds.get(file);
+    if (tid !== undefined) return tid;
+    const data = textures.get(file);
+    if (!data) return undefined;
+    const vid = id();
+    tid = id();
+    texIds.set(file, tid);
+    const stem = file.replace(/\.[^.]+$/, '');
+    const rel = `textures/${file}`;
+    texObjs.push(
+      N('Video', [L(vid), S(objName(stem, 'Video')), S('Clip')], [
+        N('Type', [S('Clip')]),
+        N('Properties70', [], [P('Path', 'KString', 'XRefUrl', '', S(rel))]),
+        N('UseMipMap', [I(0)]),
+        N('Filename', [S(rel)]),
+        N('RelativeFilename', [S(rel)]),
+        N('Content', [R(data)]),
+      ]),
+      N('Texture', [L(tid), S(objName(stem, 'Texture')), S('')], [
+        N('Type', [S('TextureVideoClip')]),
+        N('Version', [I(202)]),
+        N('TextureName', [S(objName(stem, 'Texture'))]),
+        N('Properties70', [], [P('UseMaterial', 'bool', '', '', I(1))]),
+        N('Media', [S(objName(stem, 'Video'))]),
+        N('FileName', [S(rel)]),
+        N('RelativeFilename', [S(rel)]),
+        N('ModelUVTranslation', [D(0), D(0)]),
+        N('ModelUVScaling', [D(1), D(1)]),
+        N('Texture_Alpha_Source', [S('None')]),
+        N('Cropping', [I(0), I(0), I(0), I(0)]),
+      ]),
+    );
+    texConn.push(N('C', [S('OO'), L(vid), L(tid)]));
+    return tid;
+  };
+  mesh.materials.forEach((m, i) => {
+    const link = (file: string | undefined, prop: string) => {
+      const t = file ? texture(file) : undefined;
+      if (t !== undefined) texConn.push(N('C', [S('OP'), L(t), L(matIds[i]), S(prop)]));
+    };
+    link(m.map, 'DiffuseColor');
+    if (m.alpha !== 'opaque') link(m.map, 'TransparentColor');
+    link(m.normalMap, 'NormalMap');
+  });
+  const videoCount = texObjs.length / 2;
 
   const now = new Date();
   const root: FbxNode[] = [
@@ -299,17 +354,24 @@ export function exportFBX(mesh: MeshData, name = 'Character'): Uint8Array {
     N('References'),
     N('Definitions', [], [
       N('Version', [I(100)]),
-      N('Count', [I(3 + mesh.materials.length)]),
+      N('Count', [I(3 + mesh.materials.length + videoCount * 2)]),
       N('ObjectType', [S('GlobalSettings')], [N('Count', [I(1)])]),
       N('ObjectType', [S('Model')], [N('Count', [I(1)])]),
       N('ObjectType', [S('Geometry')], [N('Count', [I(1)])]),
       N('ObjectType', [S('Material')], [N('Count', [I(mesh.materials.length)])]),
+      ...(videoCount
+        ? [
+            N('ObjectType', [S('Texture')], [N('Count', [I(videoCount)])]),
+            N('ObjectType', [S('Video')], [N('Count', [I(videoCount)])]),
+          ]
+        : []),
     ]),
-    N('Objects', [], [geometry, model, ...materials]),
+    N('Objects', [], [geometry, model, ...materials, ...texObjs]),
     N('Connections', [], [
       N('C', [S('OO'), L(modelId), L(0)]),
       N('C', [S('OO'), L(geomId), L(modelId)]),
       ...matIds.map((m) => N('C', [S('OO'), L(m), L(modelId)])),
+      ...texConn,
     ]),
     N('Takes', [], [N('Current', [S('')])]),
   ];

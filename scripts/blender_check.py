@@ -51,48 +51,49 @@ def stats():
 
 def render(path, out_png):
     scene = bpy.context.scene
-    meshes = [o for o in scene.objects if o.type == "MESH"]
     _, _, _, _, lo, hi = stats()
     centre = (lo + hi) / 2
     size = max(hi - lo)
-    for o in meshes:
-        for p in o.data.polygons:
-            p.use_smooth = True if not o.data.polygons or True else False
-    scene.render.engine = "BLENDER_WORKBENCH"
-    scene.display.shading.light = "STUDIO"
-    scene.display.shading.color_type = "MATERIAL"
-    scene.display.shading.show_cavity = False
+    engines = [e.identifier for e in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items]
+    scene.render.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engines else "BLENDER_EEVEE"
     scene.render.resolution_x = 900
     scene.render.resolution_y = 900
-    scene.render.film_transparent = False
+    scene.view_settings.view_transform = "AgX" if "AgX" in [i.identifier for i in scene.view_settings.bl_rna.properties["view_transform"].enum_items] else "Filmic"
     world = bpy.data.worlds.new("w")
+    world.use_nodes = True
+    world.node_tree.nodes["Background"].inputs[0].default_value = (0.32, 0.34, 0.38, 1)
+    world.node_tree.nodes["Background"].inputs[1].default_value = 0.9
     scene.world = world
+    for name, loc, energy in [("key", (2.5, -3, 3.5), 900), ("fill", (-3, -2, 2), 300), ("rim", (0, 3, 3), 500)]:
+        ld = bpy.data.lights.new(name, "AREA")
+        ld.energy = energy
+        ld.size = 2.5
+        lo_ = bpy.data.objects.new(name, ld)
+        lo_.location = loc
+        lo_.rotation_euler = (centre - Vector(loc)).to_track_quat("-Z", "Y").to_euler()
+        scene.collection.objects.link(lo_)
     cam_data = bpy.data.cameras.new("cam")
     cam_data.type = "ORTHO"
-    cam_data.ortho_scale = size * 1.12
+    cam_data.ortho_scale = size * 1.08
     cam = bpy.data.objects.new("cam", cam_data)
     scene.collection.objects.link(cam)
     scene.camera = cam
-    shots = {"front": (0, -1, 0), "side": (1, 0, 0), "three_quarter": (0.75, -1, 0.15)}
-    from mathutils import Vector as V
-    paths = []
-    for label, d in shots.items():
-        d = V(d).normalized()
-        cam.location = centre + d * size * 3
+
+    def shoot(label, d, target, scale):
+        d = Vector(d).normalized()
+        cam_data.ortho_scale = scale
+        cam.location = target + d * 6
         cam.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
         scene.render.filepath = f"{out_png}_{label}.png"
         bpy.ops.render.render(write_still=True)
-        paths.append(scene.render.filepath)
-    # Close-up of the head (top 18% of the model).
-    head_c = V((centre.x, centre.y, hi.z - (hi.z - lo.z) * 0.09))
-    cam_data.ortho_scale = (hi.z - lo.z) * 0.22
-    for label, d in {"face": (0, -1, 0), "face34": (0.8, -1, 0.1)}.items():
-        d = V(d).normalized()
-        cam.location = head_c + d * size * 3
-        cam.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
-        scene.render.filepath = f"{out_png}_{label}.png"
-        bpy.ops.render.render(write_still=True)
-    return paths
+
+    shoot("front", (0, -1, 0), centre, size * 1.08)
+    shoot("three_quarter", (0.7, -1, 0.1), centre, size * 1.08)
+    shoot("back", (0, 1, 0), centre, size * 1.08)
+    h = hi.z - lo.z
+    head = Vector((centre.x, centre.y, hi.z - h * 0.085))
+    shoot("face", (0, -1, 0), head, h * 0.2)
+    shoot("face34", (0.8, -1, 0.05), head, h * 0.2)
 
 
 ok = True
