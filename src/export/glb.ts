@@ -86,12 +86,13 @@ export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Ui
     return {
       name: m.name,
       pbrMetallicRoughness: {
-        baseColorFactor: [...hexToRgb(m.color).map(srgbToLinear), 1],
+        baseColorFactor: [...hexToRgb(m.color).map(srgbToLinear), m.opacity ?? 1],
         metallicFactor: m.metalness,
         roughnessFactor: m.roughness,
         ...(base ? { baseColorTexture: base } : {}),
       },
       ...(normal ? { normalTexture: normal } : {}),
+      ...(m.emissive ? { emissiveFactor: hexToRgb(m.emissive).map(srgbToLinear) } : {}),
       ...(m.alpha === 'mask' ? { alphaMode: 'MASK', alphaCutoff: 0.5 } : m.alpha === 'blend' ? { alphaMode: 'BLEND' } : {}),
       ...(m.doubleSided ? { doubleSided: true } : {}),
     };

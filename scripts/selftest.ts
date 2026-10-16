@@ -8,6 +8,7 @@ import { buildHuman } from '../src/core/human';
 import type { MeshData } from '../src/core/mesh';
 import { DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, type HumanParams } from '../src/core/params';
 import { exportCharacter } from '../src/export';
+import { dressing, GARMENTS } from '../src/core/garments';
 import { nodeLibrary } from './node-assets';
 
 let failures = 0;
@@ -114,7 +115,23 @@ const allSliders = Object.fromEntries(lib.catalog.sliders.flatMap((g) => g.slide
 cases.push(['every slider', { ...DEFAULT_PARAMS, modifiers: allSliders }]);
 for (const o of lib.catalog.outfits) cases.push([`outfit ${o.id}`, { ...DEFAULT_PARAMS, outfit: o.id, gender: o.tags.includes('Female') ? 0 : 1 }]);
 for (const h of lib.catalog.hair) cases.push([`hair ${h.id}`, { ...DEFAULT_PARAMS, hair: h.id, hat: 'fedora01' }]);
+// Every procedural garment, on a female and a male body, at medium and HD.
+for (const g of GARMENTS) {
+  const slot = g.slot === 'acc' ? { accessories: [g.id] } : { [g.slot]: g.id };
+  for (const [gender, detail] of [[0, 'medium'], [1, 'high']] as const)
+    cases.push([`garment ${g.id} g${gender}`, { ...DEFAULT_PARAMS, outfit: 'none', gender, detail, ...slot }]);
+}
+cases.push(['sandals', { ...DEFAULT_PARAMS, outfit: 'none', shoes: 'sandals' }]);
+cases.push(['barefoot', { ...DEFAULT_PARAMS, outfit: 'none', shoes: 'none', bottom: 'none' }]);
 
+// Modesty rules: under-18 female characters always get a top; nobody is fully undressed.
+{
+  const teen = dressing({ ...DEFAULT_PARAMS, outfit: 'none', top: 'none', bottom: 'none', gender: 0, age: 0.3 });
+  if (teen.top !== 'tank_top') fail('minor without top');
+  if (teen.bottom !== 'briefs') fail('no bottom fallback');
+  const adult = dressing({ ...DEFAULT_PARAMS, outfit: 'none', top: 'none', gender: 0, age: 0.6 });
+  if (adult.top) fail('adult topless option not honoured');
+}
 for (const [label, p] of cases) {
   try {
     const ch = await buildHuman(lib, p);

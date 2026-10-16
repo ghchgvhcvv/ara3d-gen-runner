@@ -2,6 +2,7 @@ import { AssetLibrary, fetchSource, type CatalogItem } from '../core/assets';
 import { autoSkin, buildHuman, type Character } from '../core/human';
 import { triangleCount } from '../core/mesh';
 import { ageToYears, DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, yearsToAge, type HumanParams } from '../core/params';
+import { GARMENTS, garmentById, PATTERNS } from '../core/garments';
 import { exportCharacter, type ExportFormat } from '../export';
 import { Viewer } from './viewer';
 
@@ -139,11 +140,103 @@ controls.append(
   ),
   section('Hair', true, picker(cat.hair, 'hair', NONE), color('Hair tint', 'hairTint')),
   section('Clothing', true,
-    picker(cat.outfits, 'outfit'), color('Outfit tint', 'outfitTint'),
-    el('div', { className: 'sub', textContent: 'Shoes' }), picker(cat.shoes, 'shoes', NONE),
+    el('div', { className: 'hint', textContent: 'Pick a full outfit, or "Separate pieces" to combine tops, bottoms, wrappers and accessories.' }),
+    picker(cat.outfits, 'outfit', [{ id: 'none', name: 'Separate pieces' }]), color('Outfit tint', 'outfitTint'),
+    piecesPanel(),
+    el('div', { className: 'sub', textContent: 'Footwear' }),
+    picker(cat.shoes, 'shoes', [{ id: 'none', name: 'Barefoot' }, { id: 'sandals', name: 'Sandals' }, { id: 'combat_boots', name: 'Combat boots' }]),
     el('div', { className: 'sub', textContent: 'Hat' }), picker(cat.hats, 'hat', NONE),
   ),
+  section('Accessories', true, accessoriesPanel()),
 );
+
+// --- Separate pieces & accessories -------------------------------------------------
+
+function selectRow(label: string, options: [string, string][], get: () => string, put: (v: string) => void) {
+  const sel = el('select');
+  for (const [v, l] of options) sel.append(new Option(l, v));
+  sel.addEventListener('change', () => put(sel.value));
+  sync.push(() => (sel.value = get()));
+  sel.value = get();
+  return el('div', { className: 'ctl wide' }, el('span', { textContent: label }), sel);
+}
+
+/** Pattern + colour controls for whichever garment currently fills a slot. */
+function styleControls(current: () => string) {
+  const box = el('div', { className: 'style-box' });
+  let shown = '';
+  const render = () => {
+    const id = current();
+    if (id === shown) {
+      box.querySelectorAll<HTMLElement>('[data-sync]').forEach((e) => e.dispatchEvent(new Event('sync')));
+      return;
+    }
+    shown = id;
+    box.replaceChildren();
+    const def = garmentById.get(id);
+    if (!def) return;
+    const st = () => params.garmentStyles[id] ?? {};
+    const put = (patch: Record<string, string>) =>
+      set({ garmentStyles: { ...params.garmentStyles, [id]: { ...st(), ...patch } } });
+    if (def.patterns.length > 1) {
+      const sel = el('select');
+      sel.dataset.sync = '1';
+      for (const p of def.patterns.filter((x) => PATTERNS.includes(x))) sel.append(new Option(p, p));
+      sel.value = st().pattern ?? def.patterns[0];
+      sel.addEventListener('change', () => put({ pattern: sel.value }));
+      sel.addEventListener('sync', () => (sel.value = st().pattern ?? def.patterns[0]));
+      box.append(el('div', { className: 'ctl wide' }, el('span', { textContent: 'Pattern' }), sel));
+    }
+    for (const [key, label, fallback] of [['color', 'Colour', def.color], ['color2', 'Accent', def.color2]] as const) {
+      const input = el('input', { type: 'color', value: st()[key] ?? fallback });
+      input.dataset.sync = '1';
+      input.addEventListener('input', () => put({ [key]: input.value }));
+      input.addEventListener('sync', () => (input.value = st()[key] ?? fallback));
+      box.append(el('div', { className: 'ctl wide' }, el('span', { textContent: label }), input));
+    }
+  };
+  sync.push(render);
+  render();
+  return box;
+}
+
+function piecesPanel() {
+  const opts = (slot: 'top' | 'bottom', none: string): [string, string][] =>
+    [['none', none], ...GARMENTS.filter((g) => g.slot === slot && g.id !== 'briefs').map((g) => [g.id, g.label] as [string, string])];
+  const panel = el('div', { className: 'pieces' },
+    el('div', { className: 'sub', textContent: 'Top' }),
+    selectRow('Top', opts('top', 'None (shirtless / topless)'), () => params.top, (v) => set({ top: v })),
+    styleControls(() => params.top),
+    el('div', { className: 'hint', textContent: 'Topless is available for adult characters; under-18 female characters automatically get a top.' }),
+    el('div', { className: 'sub', textContent: 'Bottom' }),
+    selectRow('Bottom', opts('bottom', 'Briefs only'), () => params.bottom, (v) => set({ bottom: v })),
+    styleControls(() => params.bottom),
+  );
+  const show = () => (panel.style.display = params.outfit === 'none' ? '' : 'none');
+  sync.push(show);
+  show();
+  return panel;
+}
+
+function accessoriesPanel() {
+  const wrap = el('div', {});
+  for (const g of GARMENTS.filter((x) => x.slot === 'acc')) {
+    const box = el('input', { type: 'checkbox' });
+    box.addEventListener('change', () => {
+      const has = params.accessories.includes(g.id);
+      set({ accessories: has ? params.accessories.filter((a) => a !== g.id) : [...params.accessories, g.id] });
+    });
+    sync.push(() => (box.checked = params.accessories.includes(g.id)));
+    box.checked = params.accessories.includes(g.id);
+    const row = el('label', { className: 'acc' }, box, g.label);
+    wrap.append(row);
+    if (g.patterns.length > 1 || ['waist_sash', 'shoulder_drape'].includes(g.id)) {
+      const st = styleControls(() => (params.accessories.includes(g.id) ? g.id : ''));
+      wrap.append(st);
+    }
+  }
+  return wrap;
+}
 
 // Detail sliders, grouped like MakeHuman: one section per category.
 const categories = new Map<string, Node[]>();
@@ -219,9 +312,13 @@ document.querySelectorAll<HTMLButtonElement>('#export button').forEach((btn) =>
   }),
 );
 
+// URL options: #preset=<name>&face
+const hash = new URLSearchParams(location.hash.slice(1));
+const presetName = hash.get('preset');
+if (presetName && PRESETS[presetName]) params = { ...DEFAULT_PARAMS, ...PRESETS[presetName], name: presetName, detail: params.detail };
 sync.forEach((f) => f());
 regenerate();
-if (location.hash === '#face') {
+if (hash.has('face')) {
   $<HTMLInputElement>('#face').checked = true;
   viewer.focusFace(true);
 }

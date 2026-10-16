@@ -12,6 +12,10 @@ export interface Material {
   normalMap?: string;
   alpha: 'opaque' | 'mask' | 'blend';
   doubleSided: boolean;
+  /** sRGB hex glow colour (neon, visors). */
+  emissive?: string;
+  /** 0..1, for alpha 'blend' materials without a texture. */
+  opacity?: number;
 }
 
 export interface MeshGroup {

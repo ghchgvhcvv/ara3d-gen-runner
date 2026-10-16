@@ -87,3 +87,7 @@ main { flex: 1; position: relative; min-width: 0; }
 }
 #export button[disabled] { opacity: 0.5; cursor: progress; }
 #loading[hidden] { display: none; }
+label.acc { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
+.style-box { display: grid; gap: 6px; padding-left: 10px; border-left: 2px solid var(--border); }
+.style-box:empty { display: none; }
+.pieces { display: grid; gap: 8px; }

@@ -3,7 +3,8 @@
  * lashes, hair, clothes, shoes, hat) + skeleton, as one multi-material mesh.
  */
 import type { AssetLibrary, AssetMaterial, CatalogItem, ProxyMeta, Slider } from './assets';
-import { compact, subdivide, type PolyMesh } from './geometry';
+import { compact, subdivide, vertexNormals, type PolyMesh } from './geometry';
+import { buildGarments, dressing } from './garments';
 import type { Vec3 } from './math';
 import { MeshAssembler, type Material, type MeshData } from './mesh';
 import { applyTargets, targetWeights } from './morph';
@@ -91,7 +92,6 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
   const cat = lib.catalog;
   const find = (items: CatalogItem[], id: string) => (id === 'none' ? undefined : items.find((i) => i.id === id));
   const outfit = find(cat.outfits, p.outfit);
-  const shoes = find(cat.shoes, p.shoes);
   const hat = find(cat.hats, p.hat);
   const hair = find(cat.hair, p.hair);
   const brows = find(cat.eyebrows, p.eyebrows);
@@ -100,33 +100,39 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
   const skin = p.skin === 'auto' ? autoSkin(p, cat.skins) : find(cat.skins, p.skin) ?? autoSkin(p, cat.skins);
   const low = p.detail === 'low';
   const bodyLod = low ? cat.bodies.find((b) => b.id === (p.gender >= 0.5 ? 'male1591' : 'female1605')) : undefined;
+  // Procedural footwear: combat boots reuse the boots asset plus generated shafts.
+  const shoesItem = p.shoes === 'combat_boots' ? find(cat.shoes, 'shoes03') : find(cat.shoes, p.shoes);
+  const pieces = dressing(p);
 
   const load = (item?: CatalogItem) => (item?.file ? lib.proxy(item.file) : Promise.resolve(undefined));
   const [pOutfit, pShoes, pHat, pHair, pBrows, pLashes, pEyes, pBody] = await Promise.all([
-    load(outfit), load(shoes), load(hat), load(hair), load(brows), load(lashes),
+    load(outfit), load(shoesItem), load(hat), load(hair), load(brows), load(lashes),
     lib.proxy(low ? cat.eyeMesh.replace('high-poly', 'low-poly') : cat.eyeMesh), load(bodyLod),
   ]);
 
   const coords = applyTargets(lib, targetWeights(p, slidersOf(lib)));
+  const fv = lib.base.arrays.faceVerts as Uint32Array;
+  const fullBody: PolyMesh = {
+    positions: coords,
+    faceSizes: new Uint8Array(fv.length / 4).fill(4),
+    faceVerts: fv,
+    faceUVs: lib.base.arrays.faceUVs as Uint32Array,
+    uvs: lib.base.arrays.uvs as Float32Array,
+  };
+
+  // --- Procedural garments ---
+  const gparts = buildGarments(lib, coords, vertexNormals(fullBody), fv, pieces);
 
   // --- Body (hide skin that clothes cover, to avoid poke-through) ---
-  let body: PolyMesh;
-  if (pBody) body = proxyMesh(pBody, coords);
-  else {
-    const hidden = new Uint8Array(lib.base.meta.vertexCount);
-    for (const px of [pOutfit, pShoes, pHat]) if (px) for (const v of px.arrays.deleteVerts as Uint32Array) hidden[v] = 1;
-    const fv = lib.base.arrays.faceVerts as Uint32Array;
-    body = compact(
-      {
-        positions: coords,
-        faceSizes: new Uint8Array(fv.length / 4).fill(4),
-        faceVerts: fv,
-        faceUVs: lib.base.arrays.faceUVs as Uint32Array,
-        uvs: lib.base.arrays.uvs as Float32Array,
-      },
-      (_, c) => !(hidden[c[0]] | hidden[c[1]] | hidden[c[2]] | hidden[c[3]]),
-    );
-  }
+  // Asset proxies hide any face touching one of their deleted vertices (MakeHuman behaviour);
+  // fitted garments hide faces they fully cover.
+  const assetDel = new Uint8Array(lib.base.meta.vertexCount);
+  for (const px of [pOutfit, pShoes, pHat]) if (px) for (const v of px.arrays.deleteVerts as Uint32Array) assetDel[v] = 1;
+  const coveredFaces = new Uint8Array(fv.length / 4);
+  for (const g of gparts) if (g.hides) for (let f = 0; f < coveredFaces.length; f++) coveredFaces[f] |= g.hides[f];
+  let body: PolyMesh = pBody
+    ? proxyMesh(pBody, coords)
+    : compact(fullBody, (f, c) => !(assetDel[c[0]] | assetDel[c[1]] | assetDel[c[2]] | assetDel[c[3]]) && !coveredFaces[f]);
   const hd = p.detail === 'high';
   if (hd) body = subdivide(body);
 
@@ -135,23 +141,30 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
   parts.push([proxyMesh(pEyes, coords), { ...toMaterial(eyeMat.material!), name: 'Eyes', alpha: 'mask' }]);
   if (pBrows && brows) parts.push([proxyMesh(pBrows, coords), { ...toMaterial(brows.material!), name: 'Eyebrows' }]);
   if (pLashes && lashes) parts.push([proxyMesh(pLashes, coords), { ...toMaterial(lashes.material!), name: 'Eyelashes' }]);
-  if (pShoes && shoes) {
+  const groundParts: PolyMesh[] = [];
+  if (pShoes && shoesItem) {
     const m = proxyMesh(pShoes, coords);
-    parts.push([hd ? subdivide(m) : m, { ...toMaterial(shoes.material!), name: 'Shoes' }]);
+    parts.push([hd ? subdivide(m) : m, { ...toMaterial(shoesItem.material!), name: 'Shoes' }]);
+    groundParts.push(m);
   }
   if (pOutfit && outfit) {
     const m = proxyMesh(pOutfit, coords);
     const mat = toMaterial(outfit.material!);
     parts.push([hd ? subdivide(m) : m, { ...mat, name: 'Outfit', color: tint(mat.color, p.outfitTint) }]);
   }
+  for (const g of gparts) {
+    parts.push([hd && g.smooth ? subdivide(g.mesh) : g.mesh, g.material]);
+    if (g.ground) groundParts.push(g.mesh);
+  }
   const hatMesh = pHat ? proxyMesh(pHat, coords) : undefined;
+  // Lowest point of anything covering the crown: hair above it is trimmed.
+  let brim = Infinity;
+  for (const m of [hatMesh, ...gparts.filter((g) => g.headwear).map((g) => g.mesh)])
+    if (m) for (let i = 1; i < m.positions.length; i += 3) brim = Math.min(brim, m.positions[i]);
   if (pHair && hair) {
     const mat = toMaterial(hair.material!);
     let m = proxyMesh(pHair, coords);
-    if (hatMesh) {
-      // Drop hair polygons above the hat brim so hair doesn't poke through the crown.
-      let brim = Infinity;
-      for (let i = 1; i < hatMesh.positions.length; i += 3) brim = Math.min(brim, hatMesh.positions[i]);
+    if (brim < Infinity) {
       const P = m.positions;
       m = compact(m, (_, c) => c.reduce((s, v) => s + P[v * 3 + 1], 0) / c.length < brim + 0.05);
     }
@@ -161,8 +174,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
 
   // --- To metres, feet on the ground ---
   let minY = Infinity, maxBodyY = -Infinity;
-  const ground = [body, ...(pShoes ? [parts.find((x) => x[1].name === 'Shoes')![0]] : [])];
-  for (const m of ground) for (let i = 1; i < m.positions.length; i += 3) minY = Math.min(minY, m.positions[i]);
+  for (const m of [body, ...groundParts]) for (let i = 1; i < m.positions.length; i += 3) minY = Math.min(minY, m.positions[i]);
   for (let i = 1; i < body.positions.length; i += 3) maxBodyY = Math.max(maxBodyY, body.positions[i]);
   const xf = (src: Float32Array) => {
     const out = new Float32Array(src.length);

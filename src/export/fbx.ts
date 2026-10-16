@@ -235,7 +235,10 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
       N('ShadingModel', [S('Phong')]),
       N('MultiLayer', [I(0)]),
       N('Properties70', [], [
-        P('EmissiveColor', 'Color', '', 'A', D(0), D(0), D(0)),
+        ...(() => {
+          const [er, eg, eb] = m.emissive ? hexToRgb(m.emissive).map(srgbToLinear) : [0, 0, 0];
+          return [P('EmissiveColor', 'Color', '', 'A', D(er), D(eg), D(eb)), P('EmissiveFactor', 'Number', '', 'A', D(m.emissive ? 1 : 0))];
+        })(),
         P('AmbientColor', 'Color', '', 'A', D(0), D(0), D(0)),
         P('DiffuseColor', 'Color', '', 'A', D(r), D(g), D(b)),
         P('DiffuseFactor', 'Number', '', 'A', D(1)),
@@ -243,7 +246,8 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
         P('SpecularFactor', 'Number', '', 'A', D(1)),
         P('ShininessExponent', 'Number', '', 'A', D(shininess)),
         P('ReflectionFactor', 'Number', '', 'A', D(m.metalness)),
-        P('Opacity', 'Number', '', 'A', D(1)),
+        P('Opacity', 'Number', '', 'A', D(m.opacity ?? 1)),
+        P('TransparencyFactor', 'Number', '', 'A', D(1 - (m.opacity ?? 1))),
       ]),
     ]);
   });

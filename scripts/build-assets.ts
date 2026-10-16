@@ -13,6 +13,7 @@ import { basename, dirname, join, relative } from 'node:path';
 import sharp from 'sharp';
 import type { AssetMaterial, BaseMeta, Catalog, CatalogItem, ProxyKind, ProxyMeta, Slider, SliderGroup, TargetsMeta } from '../src/core/assets';
 import { encodePack } from '../src/core/pack';
+import { REGION } from '../src/core/garments/body';
 
 const ROOT = join(import.meta.dirname, '..');
 const MH = join(ROOT, 'vendor/mh/makehuman/data');
@@ -200,7 +201,29 @@ function buildBase() {
       ([name, b]) => ({ name, parent: b.parent, head: b.head, tail: b.tail }),
     ),
   };
+  // Body region per vertex, from the dominant skinning bone (255 = helper geometry).
+  const regionOf = (bone: string) =>
+    /^neck/.test(bone) ? REGION.neck
+    : /^(spine|breast|clavicle)/.test(bone) ? REGION.torso
+    : /^(root|pelvis)/.test(bone) ? REGION.hips
+    : /^(shoulder|upperarm)/.test(bone) ? REGION.upperarm
+    : /^lowerarm/.test(bone) ? REGION.lowerarm
+    : /^(wrist|finger|metacarpal)/.test(bone) ? REGION.hand
+    : /^upperleg/.test(bone) ? REGION.upperleg
+    : /^lowerleg/.test(bone) ? REGION.lowerleg
+    : /^(foot|toe)/.test(bone) ? REGION.foot
+    : REGION.head;
+  const weights = JSON.parse(readFileSync(join(MH, 'rigs/default_weights.mhw'), 'utf8')).weights as Record<string, [number, number][]>;
+  const best = new Float32Array(meta.vertexCount);
+  const regions = new Uint8Array(meta.vertexCount).fill(255);
+  for (const [bone, list] of Object.entries(weights))
+    for (const [v, w] of list)
+      if (w > best[v]) {
+        best[v] = w;
+        regions[v] = regionOf(bone);
+      }
   const data = encodePack(meta, {
+    regions,
     positions: Float32Array.from(obj.v),
     faceVerts: Uint32Array.from(body.flatMap((f) => f.v)),
     faceUVs: Uint32Array.from(body.flatMap((f) => f.t)),

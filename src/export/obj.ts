@@ -35,7 +35,11 @@ export function exportOBJ(mesh: MeshData, name: string, mtlFile: string, texDir 
     const [r, g, b] = hexToRgb(m.color).map(srgbToLinear);
     const ns = Math.round((1 - m.roughness) ** 2 * 900 + 4);
     mtl.push('', `newmtl ${m.name}`, 'Ka 0 0 0', `Kd ${f(r)} ${f(g)} ${f(b)}`, 'Ks 0.04 0.04 0.04', `Ns ${ns}`,
-      `Pr ${f(m.roughness)}`, `Pm ${f(m.metalness)}`, 'd 1', 'illum 2');
+      `Pr ${f(m.roughness)}`, `Pm ${f(m.metalness)}`, `d ${f(m.opacity ?? 1)}`, 'illum 2');
+    if (m.emissive) {
+      const [er, eg, eb] = hexToRgb(m.emissive).map(srgbToLinear);
+      mtl.push(`Ke ${f(er)} ${f(eg)} ${f(eb)}`);
+    }
     if (m.map) mtl.push(`map_Kd ${texDir}${m.map}`);
     if (m.map && m.alpha !== 'opaque') mtl.push(`map_d ${texDir}${m.map}`);
     if (m.normalMap) mtl.push(`map_Bump -bm 1.0 ${texDir}${m.normalMap}`);

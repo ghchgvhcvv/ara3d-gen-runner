@@ -21,7 +21,7 @@ export class Viewer {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.toneMapping = THREE.AgXToneMapping;
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.scene.background = new THREE.Color('#2b2f38');
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -33,6 +33,7 @@ export class Viewer {
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
     key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.015;
     Object.assign(key.shadow.camera, { left: -1.5, right: 1.5, top: 2.5, bottom: -0.5, near: 0.5, far: 12 });
     this.scene.add(key);
     const rim = new THREE.DirectionalLight('#b8c8ff', 1.2);
@@ -116,13 +117,19 @@ export class Viewer {
         map: mt.map ? this.texture(mt.map, true) : null,
         normalMap: mt.normalMap ? this.texture(mt.normalMap, false) : null,
         side: mt.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+        emissive: mt.emissive ? new THREE.Color(mt.emissive) : new THREE.Color(0),
+        emissiveIntensity: mt.emissive ? 1.6 : 0,
         wireframe: this.wireframe,
       });
+      // Double-sided cloth would otherwise shadow itself (acne).
+      if (mt.doubleSided) mat.shadowSide = THREE.FrontSide;
       if (mt.alpha === 'mask') {
         mat.alphaTest = 0.5;
         mat.alphaToCoverage = true;
       } else if (mt.alpha === 'blend') {
         mat.transparent = true;
+        mat.opacity = mt.opacity ?? 1;
+        mat.depthWrite = false;
       }
       return mat;
     });

@@ -108,6 +108,21 @@ export class AssetLibrary {
   targets!: Pack<TargetsMeta>;
   private proxies = new Map<string, Promise<Pack<ProxyMeta>>>();
   private textures = new Map<string, Promise<Uint8Array>>();
+  /** Textures generated at runtime (procedural garments), by file name. */
+  private generated = new Map<string, Uint8Array>();
+  private blobUrls = new Map<string, string>();
+
+  registerTexture(name: string, data: Uint8Array): void {
+    this.generated.set(name, data);
+  }
+
+  hasTexture(name: string): boolean {
+    return this.generated.has(name);
+  }
+
+  peekTexture(name: string): Uint8Array | undefined {
+    return this.generated.get(name);
+  }
 
   constructor(readonly source: AssetSource) {}
 
@@ -130,12 +145,23 @@ export class AssetLibrary {
   }
 
   texture(name: string): Promise<Uint8Array> {
+    const gen = this.generated.get(name);
+    if (gen) return Promise.resolve(gen);
     let p = this.textures.get(name);
     if (!p) this.textures.set(name, (p = this.source.read(`textures/${name}`)));
     return p;
   }
 
   textureUrl(name: string): string {
+    const gen = this.generated.get(name);
+    if (gen) {
+      let url = this.blobUrls.get(name);
+      if (!url) {
+        url = URL.createObjectURL(new Blob([gen as BlobPart], { type: name.endsWith('.png') ? 'image/png' : 'image/jpeg' }));
+        this.blobUrls.set(name, url);
+      }
+      return url;
+    }
     return this.source.url ? this.source.url(`textures/${name}`) : name;
   }
 }

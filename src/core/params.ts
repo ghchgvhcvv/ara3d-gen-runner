@@ -29,7 +29,16 @@ export interface HumanParams {
   eyelashes: string;
   hair: string;
   hairTint: string;
+  /** MakeHuman outfit id, or 'none' to dress with separate pieces below. */
   outfit: string;
+  /** Procedural top / bottom garment ids or 'none' (used when outfit is 'none'). 'none' top = shirtless/topless. */
+  top: string;
+  bottom: string;
+  /** Procedural accessories (garment ids). */
+  accessories: string[];
+  /** Per-garment pattern / colour overrides. */
+  garmentStyles: Record<string, { pattern?: string; color?: string; color2?: string }>;
+  /** MakeHuman shoes id, 'sandals', 'combat_boots' or 'none' (barefoot). */
   shoes: string;
   hat: string;
   outfitTint: string;
@@ -60,6 +69,10 @@ export const DEFAULT_PARAMS: HumanParams = {
   hair: 'short02',
   hairTint: '#ffffff',
   outfit: 'male_casualsuit01',
+  top: 'none',
+  bottom: 'none',
+  accessories: [],
+  garmentStyles: {},
   shoes: 'shoes01',
   hat: 'none',
   outfitTint: '#ffffff',
@@ -100,6 +113,71 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
   Teen: {
     gender: 0.1, age: 0.42, muscle: 0.45, weight: 0.4, height: 0.5, hair: 'long01', outfit: 'female_casualsuit02',
     shoes: 'shoes03', eyes: 'lightblue', african: 0.05, asian: 0.75, caucasian: 0.2,
+  },
+  'The Adventurer': {
+    gender: 0, age: 0.52, muscle: 0.65, weight: 0.38, height: 0.58, proportions: 0.85, breastSize: 0.55,
+    african: 0.05, asian: 0.05, caucasian: 0.9, hair: 'braid01', eyes: 'brownlight', eyebrows: 'eyebrow010', eyelashes: 'eyelashes02',
+    outfit: 'none', top: 'tank_top', bottom: 'cargo_shorts', shoes: 'combat_boots', accessories: ['utility_belt'],
+    garmentStyles: { tank_top: { pattern: 'solid', color: '#3b6f73' }, cargo_shorts: { pattern: 'khaki', color: '#8f7a55' } },
+  },
+  'The Secret Agent': {
+    gender: 1, age: 0.6, muscle: 0.62, weight: 0.45, height: 0.5, proportions: 0.9,
+    african: 0.05, asian: 0.05, caucasian: 0.9, hair: 'short04', eyes: 'lightblue', eyebrows: 'eyebrow007',
+    outfit: 'male_elegantsuit01', shoes: 'shoes02', accessories: ['watch'],
+  },
+  'The Soldier': {
+    gender: 1, age: 0.55, muscle: 0.8, weight: 0.55, height: 0.5, african: 0.3, asian: 0.1, caucasian: 0.6,
+    hair: 'short03', eyebrows: 'eyebrow003', outfit: 'none', top: 'fatigue_shirt', bottom: 'fatigue_pants',
+    shoes: 'combat_boots', accessories: ['tactical_vest', 'helmet', 'belt'],
+  },
+  'The Cyberpunk Hacker': {
+    gender: 0.15, age: 0.45, muscle: 0.45, weight: 0.35, height: 0.5, african: 0.05, asian: 0.85, caucasian: 0.1,
+    hair: 'bob02', hairTint: '#d080ff', eyes: 'ice', eyebrows: 'eyebrow012', eyelashes: 'eyelashes03',
+    outfit: 'none', top: 'techwear_jacket', bottom: 'techwear_pants', shoes: 'combat_boots', accessories: ['visor', 'neon_accents'],
+  },
+  'The Wasteland Survivor': {
+    gender: 0.9, age: 0.62, muscle: 0.75, weight: 0.4, height: 0.5, proportions: 0.45, african: 0.15, asian: 0.1, caucasian: 0.75,
+    hair: 'short01', eyebrows: 'eyebrow005', outfit: 'none', top: 'tattered_shirt', bottom: 'tattered_pants', shoes: 'combat_boots',
+    accessories: ['leather_armor', 'goggles', 'arm_wraps', 'belt', 'crossed_straps'],
+    modifiers: { 'chin/chin-prominent': 0.3, 'head/head-square': 0.3 },
+  },
+  'The African Warrior': {
+    gender: 1, age: 0.52, muscle: 0.85, weight: 0.45, height: 0.48, proportions: 0.85, african: 1, asian: 0, caucasian: 0,
+    hair: 'none', eyebrows: 'eyebrow001', outfit: 'none', top: 'none', bottom: 'wrapper_knee', shoes: 'sandals',
+    accessories: ['leather_armor', 'bead_necklace', 'arm_cuffs', 'belt'],
+    garmentStyles: { wrapper_knee: { pattern: 'ankara', color: '#c2410c', color2: '#1e3a8a' } },
+  },
+  'The Yoruba Warrior': {
+    gender: 1, age: 0.55, muscle: 0.75, weight: 0.5, height: 0.48, african: 1, asian: 0, caucasian: 0,
+    hair: 'none', eyebrows: 'eyebrow003', outfit: 'none', top: 'long_tunic', bottom: 'trousers', shoes: 'sandals',
+    accessories: ['crossed_straps', 'cowrie_necklace', 'cowrie_armbands', 'amulets', 'fila_cap'],
+    garmentStyles: {
+      long_tunic: { pattern: 'asooke', color: '#4b1d3f', color2: '#d9b25f' },
+      trousers: { pattern: 'asooke', color: '#4b1d3f', color2: '#d9b25f' },
+      fila_cap: { pattern: 'asooke', color: '#4b1d3f', color2: '#d9b25f' },
+    },
+  },
+  'The Maasai Warrior': {
+    gender: 1, age: 0.45, muscle: 0.6, weight: 0.3, height: 0.6, proportions: 0.8, african: 1, asian: 0, caucasian: 0,
+    hair: 'none', eyebrows: 'eyebrow001', outfit: 'none', top: 'none', bottom: 'wrapper_knee', shoes: 'sandals',
+    accessories: ['shoulder_drape', 'bead_collar', 'bead_armbands', 'bead_headband'],
+    garmentStyles: { wrapper_knee: { pattern: 'shuka', color: '#c81e1e', color2: '#1a2a6a' }, shoulder_drape: { pattern: 'shuka', color: '#c81e1e', color2: '#1a2a6a' } },
+  },
+  'The Zulu Warrior': {
+    gender: 1, age: 0.5, muscle: 0.9, weight: 0.5, height: 0.5, african: 1, asian: 0, caucasian: 0,
+    hair: 'none', eyebrows: 'eyebrow003', outfit: 'none', top: 'none', bottom: 'hide_aprons', shoes: 'none',
+    accessories: ['fur_bands', 'feather_headband', 'bead_necklace'],
+    garmentStyles: { hide_aprons: { pattern: 'hide', color: '#5a3a22', color2: '#1a1410' }, feather_headband: { pattern: 'leopard' } },
+  },
+  'The Dahomey Warrior': {
+    gender: 0, age: 0.5, muscle: 0.8, weight: 0.42, height: 0.5, proportions: 0.85, breastSize: 0.45, african: 1, asian: 0, caucasian: 0,
+    hair: 'none', eyes: 'brown', eyebrows: 'eyebrow011', eyelashes: 'eyelashes02', outfit: 'none',
+    top: 'tunic', bottom: 'wrapper_knee', shoes: 'sandals', accessories: ['waist_sash', 'amulet_bandolier', 'arm_guards', 'amulets'],
+    garmentStyles: {
+      tunic: { pattern: 'asooke', color: '#1f2f5c', color2: '#c9a24a' },
+      wrapper_knee: { pattern: 'kente', color: '#1d6b3a', color2: '#a61b1b' },
+      waist_sash: { pattern: 'solid', color: '#9b1c1c' },
+    },
   },
   Detective: {
     gender: 0.95, age: 0.65, muscle: 0.55, weight: 0.5, height: 0.55, african: 0.2, asian: 0.6, caucasian: 0.2, hair: 'short01', outfit: 'male_casualsuit05',
