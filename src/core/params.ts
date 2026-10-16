@@ -35,6 +35,11 @@ export interface HumanParams {
   /** Procedural top / bottom garment ids or 'none' (used when outfit is 'none'). 'none' top = shirtless/topless. */
   top: string;
   bottom: string;
+  /**
+   * Briefs under (or instead of) bottoms. Can be switched off for adult (18+)
+   * characters only; under-18 characters always keep them.
+   */
+  underwear: boolean;
   /** Procedural accessories (garment ids). */
   accessories: string[];
   /** Per-garment pattern / colour overrides. */
@@ -78,6 +83,7 @@ export const DEFAULT_PARAMS: HumanParams = {
   outfit: 'male_casualsuit01',
   top: 'none',
   bottom: 'none',
+  underwear: true,
   accessories: [],
   garmentStyles: {},
   shoes: 'shoes01',
@@ -152,10 +158,11 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
     modifiers: { 'chin/chin-prominent': 0.3, 'head/head-square': 0.3 },
   },
   'The African Warrior': {
-    gender: 1, age: 0.52, muscle: 0.85, weight: 0.45, height: 0.48, proportions: 0.85, african: 1, asian: 0, caucasian: 0,
-    hair: 'none', eyebrows: 'eyebrow001', outfit: 'none', top: 'none', bottom: 'wrapper_knee', shoes: 'sandals',
-    accessories: ['leather_armor', 'bead_necklace', 'arm_cuffs', 'belt'],
-    garmentStyles: { wrapper_knee: { pattern: 'ankara', color: '#c2410c', color2: '#1e3a8a' } },
+    gender: 1, age: 0.55, muscle: 1, weight: 0.72, height: 0.55, proportions: 1, african: 1, asian: 0, caucasian: 0,
+    hair: 'none', eyebrows: 'eyebrow003', outfit: 'none', top: 'none', bottom: 'loincloth', underwear: false, shoes: 'none',
+    accessories: [],
+    garmentStyles: { loincloth: { pattern: 'adire', color: '#13234f', color2: '#3b9cff' } },
+    modifiers: { 'torso/torso-vshape': 0.8, 'torso/torso-muscle-dorsi': 0.7, 'neck/neck-scale-horiz': 0.4, 'torso/torso-scale-horiz': 0.25 },
   },
   'The Yoruba Warrior': {
     gender: 1, age: 0.55, muscle: 0.75, weight: 0.5, height: 0.48, african: 1, asian: 0, caucasian: 0,

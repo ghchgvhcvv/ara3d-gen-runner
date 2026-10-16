@@ -35,7 +35,8 @@ def do_import(path):
 
 
 def stats():
-    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    # Blender's glTF importer adds an "Icosphere" bone-shape helper for rigged files: ignore it.
+    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH" and not o.name.startswith("Icosphere")]
     verts = sum(len(o.data.vertices) for o in meshes)
     tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in meshes)
     mats = sorted({s.material.name for o in meshes for s in o.material_slots if s.material})

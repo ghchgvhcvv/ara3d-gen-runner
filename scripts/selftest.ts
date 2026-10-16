@@ -142,6 +142,12 @@ cases.push(['barefoot', { ...DEFAULT_PARAMS, outfit: 'none', shoes: 'none', bott
   if (teen.bottom !== 'briefs') fail('no bottom fallback');
   const adult = dressing({ ...DEFAULT_PARAMS, outfit: 'none', top: 'none', gender: 0, age: 0.6 });
   if (adult.top) fail('adult topless option not honoured');
+  const bottomless = dressing({ ...DEFAULT_PARAMS, outfit: 'none', bottom: 'none', underwear: false, age: 0.6 });
+  if (bottomless.bottom || bottomless.underwear) fail('adult bottomless option not honoured');
+  for (const gender of [0, 1]) {
+    const minor = dressing({ ...DEFAULT_PARAMS, outfit: 'none', bottom: 'none', underwear: false, age: 0.3, gender });
+    if (minor.bottom !== 'briefs' || !minor.underwear) fail('minor without underwear');
+  }
 }
 // Rig variants
 for (const rig of ['game', 'game_lite', 'full', 'none'] as const)

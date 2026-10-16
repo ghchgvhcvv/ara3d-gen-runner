@@ -53,6 +53,8 @@ export interface GCtx {
   texture(key: string, make: () => TexOut): { map: string; normalMap?: string; alpha: boolean };
   /** True when a top / bottom garment is worn (accessories sit a bit further out). */
   layered: { top: boolean; bottom: boolean };
+  /** Briefs under wrappers / aprons / loincloths (always on for under-18 characters). */
+  underwear: boolean;
 }
 
 // --- Helpers ---------------------------------------------------------------------
@@ -123,7 +125,10 @@ function ringAt(ring: Vec3[], a: number): { p: Vec3; out: Vec3; tan: Vec3 } {
  * Hull-lofted skirt (wrappers, tunic skirts, aprons) from yTop down to yBot.
  * Rings never get narrower going down, so the cloth hangs past the legs.
  */
-function skirt(b: Body, yTop: number, yBot: number, offset: number, flare: number, arc?: [number, number], samples = 40): PolyMesh | null {
+function skirt(
+  b: Body, yTop: number, yBot: number, offset: number, flare: number, arc?: [number, number], samples = 40,
+  uv: { uRepeats?: number; tileV?: number } = {},
+): PolyMesh | null {
   const src = points(b, (v) => isTrunk(v) || isLegs(v));
   const k = Math.max(3, Math.ceil((yTop - yBot) / cm(3)));
   const rings: Vec3[][] = [];
@@ -148,7 +153,10 @@ function skirt(b: Body, yTop: number, yBot: number, offset: number, flare: numbe
     }
     rings.push(r);
   }
-  return orientOutward(loftRings(rings, { closedAround: !arc, tileU: 0.3, tileV: 0.3 }), [0, (yTop + yBot) / 2, b.L.torsoZ]);
+  return orientOutward(
+    loftRings(rings, { closedAround: !arc, tileU: 0.3, tileV: uv.tileV ?? 0.3, uRepeats: uv.uRepeats }),
+    [0, (yTop + yBot) / 2, b.L.torsoZ],
+  );
 }
 
 /** Solid band around a limb at parameter t. */
@@ -355,6 +363,51 @@ export const GARMENTS: GarmentDef[] = [
         ...(front ? [{ mesh: front, material: m }] : []),
         ...(back ? [{ mesh: back, material: m }] : []),
         ...(band ? [{ mesh: band, material: cloth(g, 'Waist cord', leatherStyle('#3a2414')) }] : []),
+        ...briefsUnder(g),
+      ];
+    },
+  },
+
+  {
+    id: 'loincloth', label: 'Loincloth (front & back panels)', slot: 'bottom', patterns: ['adire', 'kente', 'asooke', 'ankara', 'leather', 'hide', 'solid'],
+    color: '#13234f', color2: '#3b9cff',
+    build: (g, st) => {
+      const b = g.body;
+      const knee = b.joint('lowerleg01.L____head')[1];
+      const trunk = points(b, isTrunk);
+      const dark = mat('Loincloth trim', g.texture(`solid_${st.color}_dark`, () => makePattern('solid', '#0d1426', '#000000')), { roughness: 0.7 });
+      const orange = mat('Loincloth stripe', null, { color: '#d2692d', roughness: 0.6 });
+      const panelPattern: Pattern = st.pattern === 'adire' ? 'adire_panel' : st.pattern;
+      const body = cloth(g, 'Loincloth', st);
+      const panel: Material = { ...cloth(g, 'Loincloth panels', { ...st, pattern: panelPattern }), doubleSided: true };
+      const band = (t: number, width: number, thick: number, off: number) =>
+        solidBand(trunk, hplane(b, torsoY(b, t)), width, thick, off, { samples: 56, tileU: 0.18 });
+      // Layered waist roll: dark roll, orange stripe, patterned band, dark roll.
+      const rolls = merge([band(0.3, cm(3), cm(1.5), cm(1.1)), band(0.135, cm(2.4), cm(1.3), cm(1.2))]);
+      const stripe = band(0.262, cm(0.7), cm(0.35), cm(2.2));
+      const sash = band(0.2, cm(4.6), cm(0.9), cm(1.4));
+      const top = torsoY(b, 0.15);
+      const frontLen = (b.L.hipY - knee) * 0.62 + (top - b.L.hipY);
+      const backLen = top - (knee + cm(5));
+      const wings = skirt(b, top, top - cm(9), cm(1.5), 0.06, [-1.35, 1.35], 30, { tileV: 0.3 });
+      const front = skirt(b, top, top - frontLen, cm(2.3), 0.015, [-0.4, 0.4], 8, { uRepeats: 1, tileV: frontLen * 0.1 });
+      const back = skirt(b, top, top - backLen, cm(2.0), 0.035, [Math.PI - 1.1, Math.PI + 1.1], 18, { uRepeats: 1, tileV: backLen * 0.1 });
+      // Long side tails hanging from the waist roll.
+      const ring = hullRing(trunk, hplane(b, torsoY(b, 0.13)), { slab: cm(2), samples: 64, offset: cm(2.4) });
+      const tails: PolyMesh[] = [];
+      if (ring)
+        for (const a of [1.45, 1.75, -1.45, -1.75]) {
+          const r = ringAt(ring, a);
+          tails.push(card(r.p, v3.norm(v3.add([0, -1, 0], v3.scale(r.out, 0.08))), r.tan, cm(Math.abs(a) > 1.6 ? 40 : 34), cm(3.2), 0.8, 6));
+        }
+      return [
+        ...(rolls ? [{ mesh: rolls, material: dark }] : []),
+        ...(stripe ? [{ mesh: stripe, material: orange }] : []),
+        ...(sash ? [{ mesh: sash, material: body }] : []),
+        ...(wings ? [{ mesh: wings, material: { ...body, name: 'Loincloth hip panels', color: '#7c86a0', doubleSided: true } }] : []),
+        ...(front ? [{ mesh: front, material: panel }] : []),
+        ...(back ? [{ mesh: back, material: panel }] : []),
+        ...(tails.length ? [{ mesh: merge(tails)!, material: { ...dark, doubleSided: true } }] : []),
         ...briefsUnder(g),
       ];
     },
@@ -746,6 +799,7 @@ export const GARMENTS: GarmentDef[] = [
 // --- Shared builders -------------------------------------------------------------
 
 function briefsUnder(g: GCtx): GPart[] {
+  if (!g.underwear) return [];
   return GARMENTS.find((x) => x.id === 'briefs')!.build(g, { pattern: 'solid', color: '#4a3424', color2: '#000000' });
 }
 

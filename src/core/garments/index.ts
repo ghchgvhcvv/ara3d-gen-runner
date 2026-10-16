@@ -10,24 +10,29 @@ export { PATTERNS } from './textures';
 export interface Dressing {
   top?: string;
   bottom?: string;
+  underwear: boolean;
   accessories: string[];
   footwear?: 'sandals' | 'boots';
   styles: HumanParams['garmentStyles'];
 }
 
 /**
- * What the character actually wears. Topless is allowed for adults only, and
- * there is always something covering the lower body.
+ * What the character actually wears. Topless and bottomless (no underwear)
+ * are adult-only (18+): younger female characters always get a top, and every
+ * under-18 character keeps underwear.
  */
 export function dressing(p: HumanParams): Dressing {
   const pieces = p.outfit === 'none';
+  const minor = ageToYears(p.age) < 18;
+  const underwear = p.underwear || minor;
   let top = pieces && p.top !== 'none' && garmentById.has(p.top) ? p.top : undefined;
   let bottom = pieces && p.bottom !== 'none' && garmentById.has(p.bottom) ? p.bottom : undefined;
-  if (pieces && !bottom) bottom = 'briefs';
-  if (pieces && !top && p.gender < 0.5 && ageToYears(p.age) < 18) top = 'tank_top';
+  if (pieces && !bottom && underwear) bottom = 'briefs';
+  if (pieces && !top && p.gender < 0.5 && minor) top = 'tank_top';
   return {
     top,
     bottom,
+    underwear,
     accessories: p.accessories.filter((a) => garmentById.get(a)?.slot === 'acc'),
     footwear: p.shoes === 'sandals' ? 'sandals' : p.shoes === 'combat_boots' ? 'boots' : undefined,
     styles: p.garmentStyles,
@@ -54,6 +59,7 @@ export function buildGarments(lib: AssetLibrary, coords: Float32Array, normals: 
     body,
     faceVerts,
     layered: { top: !!d.top, bottom: !!d.bottom && d.bottom !== 'briefs' },
+    underwear: d.underwear,
     texture(key, make) {
       const id = `gen_${hashKey(key)}`;
       const color = `${id}.png`, normal = `${id}_n.png`;

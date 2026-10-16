@@ -165,9 +165,9 @@ const weave = (u: number, v: number, f = 96) => {
 
 export type Pattern =
   | 'solid' | 'camo' | 'kente' | 'asooke' | 'ankara' | 'shuka' | 'leather' | 'hide' | 'leopard' | 'fur'
-  | 'techwear' | 'molle' | 'tattered' | 'beadbands' | 'khaki';
+  | 'techwear' | 'molle' | 'tattered' | 'beadbands' | 'khaki' | 'adire' | 'adire_panel';
 
-export const PATTERNS: Pattern[] = ['solid', 'khaki', 'camo', 'kente', 'asooke', 'ankara', 'shuka', 'leather', 'hide', 'leopard', 'techwear', 'tattered'];
+export const PATTERNS: Pattern[] = ['solid', 'khaki', 'camo', 'kente', 'asooke', 'ankara', 'adire', 'adire_panel', 'shuka', 'leather', 'hide', 'leopard', 'techwear', 'tattered'];
 
 const S = 512;
 
@@ -328,6 +328,36 @@ export function makePattern(p: Pattern, c1: string, c2: string, seed = 1): TexOu
         const c = mixc(mul(A, 0.85 + 0.2 * w), dirt, Math.max(0, n - 0.45) * 1.6);
         return { c, a: holes > 0.68 ? 0 : 1, h: w + n };
       }, true, 2.5);
+    }
+    case 'adire':
+    case 'adire_panel': {
+      // Adire-style resist-dye swirls: contour lines of a domain-warped noise field.
+      // c1 = cloth (indigo), c2 = line colour. The panel variant adds a dark framed border.
+      const line = mixc(B, A, 0.25), deep = mul(A, 0.5);
+      const F = (u: number, v: number) => {
+        const wx = fbm(u, v, 3, seed + 11, 3), wy = fbm(u + 0.31, v + 0.17, 3, seed + 23, 3);
+        return fbm(u + 0.6 * (wx - 0.5), v + 0.6 * (wy - 0.5), 5, seed + 5, 3) * 16;
+      };
+      const e = 1 / S;
+      return render(S, (u, v) => {
+        const f = F(u, v);
+        const g = Math.hypot(F(u + e, v) - f, F(u, v + e) - f) / e || 1;
+        // Distance (in UV units) to the nearest contour line: constant line width everywhere.
+        const d = Math.abs(frac(f) - 0.5) / g;
+        const lw = 0.0032;
+        let c: RGB = d < lw ? mixc(line, [235, 245, 255], Math.max(0, 1 - d / lw) * 0.35) : d < lw * 2 ? deep : A;
+        let h = d < lw ? 1 : d < lw * 2 ? -0.3 : 0;
+        if (p === 'adire_panel') {
+          const e = Math.min(u, 1 - u, 1 - v);
+          if (e < 0.05) {
+            // border: dark frame with a fine braid of light ticks
+            c = e < 0.012 || e > 0.04 ? mul(A, 0.35) : frac((u + v) * 40) < 0.3 ? mixc(line, [200, 200, 200], 0.4) : mul(A, 0.5);
+            h = e < 0.012 ? -0.5 : 0.4;
+          }
+        }
+        const w = weave(u, v, 140);
+        return { c: mul(c, 0.9 + 0.1 * w), h: h + w * 0.3 };
+      }, false, 2.5);
     }
     case 'beadbands': {
       // Concentric bead rows along v; c1/c2 are ignored in favour of a Maasai palette.

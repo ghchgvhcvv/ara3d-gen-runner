@@ -67,6 +67,7 @@ function regenerate() {
 
 function set(patch: Partial<HumanParams>) {
   params = { ...params, ...patch };
+  if ('age' in patch) sync.forEach((f) => f());
   regenerate();
 }
 
@@ -214,13 +215,32 @@ function piecesPanel() {
     styleControls(() => params.top),
     el('div', { className: 'hint', textContent: 'Topless is available for adult characters; under-18 female characters automatically get a top.' }),
     el('div', { className: 'sub', textContent: 'Bottom' }),
-    selectRow('Bottom', opts('bottom', 'Briefs only'), () => params.bottom, (v) => set({ bottom: v })),
+    selectRow('Bottom', opts('bottom', 'None'), () => params.bottom, (v) => set({ bottom: v })),
     styleControls(() => params.bottom),
+    underwearToggle(),
   );
   const show = () => (panel.style.display = params.outfit === 'none' ? '' : 'none');
   sync.push(show);
   show();
   return panel;
+}
+
+/** Underwear on/off. Off (bottomless) is only possible for adult characters. */
+function underwearToggle() {
+  const box = el('input', { type: 'checkbox' });
+  const note = el('div', { className: 'hint' });
+  box.addEventListener('change', () => set({ underwear: box.checked }));
+  const show = () => {
+    const minor = ageToYears(params.age) < 18;
+    box.checked = params.underwear || minor;
+    box.disabled = minor;
+    note.textContent = minor
+      ? 'Under-18 characters always wear underwear.'
+      : 'Untick for no underwear (bottomless), adults only. Also applies under wrappers, aprons and loincloths.';
+  };
+  sync.push(show);
+  show();
+  return el('div', {}, el('label', { className: 'acc' }, box, 'Underwear (briefs)'), note);
 }
 
 function accessoriesPanel() {

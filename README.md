@@ -66,21 +66,35 @@ src/export/    glb.ts, fbx.ts (binary writer), obj.ts, index.ts (bundling)
 src/app/       three.js viewer + catalog-driven UI
 ```
 
-## Roadmap: rigging and animation
+## Clothing
 
-Most of the groundwork for rigging is already in place:
+Choose a full MakeHuman outfit, or **Separate pieces**:
 
-- MakeHuman's **163-bone skeleton** (with fingers, toes and facial bones) is computed for every
-  character (`Character.bones`; tick **Skeleton** in the viewer to see it).
-- The CC0 **skin weights** (`default_weights.mhw`) ship with the source data.
+- **Tops:** tank top, fatigue shirt, techwear jacket, tattered shirt, sleeveless tunic, woven tunic (buba), or none (shirtless/topless).
+- **Bottoms:** briefs, cargo shorts, fatigue/techwear/tattered pants, loose trousers (sokoto), wrappers (knee or ankle length), Zulu hide aprons, a loincloth with front and back panels, or none.
+- **Accessories:** belts, utility belt, waist sash, shuka shoulder drape, crossed straps, amulet bandolier, leather armor, tactical vest, beaded collar, bead and cowrie necklaces, protective charms, brass cuffs, beaded and cowrie arm bands, arm guards, fur bands, fur headband with feathers, beaded headband, fila cap, combat helmet, holo visor, neon accents, goggles, arm wraps, wrist watch.
+- **Footwear:** MakeHuman shoes, sandals, combat boots, or barefoot.
+- **Fabrics:** generated, tileable, with normal maps: kente, aso-oke, ankara, adire, shuka plaid, cowhide, leopard, camo, MOLLE, leather, techwear, tattered.
 
-Next steps:
-1. Pack the weights. Transfer them to proxies via their reference vertices, and to subdivided meshes by interpolation.
-2. Offer a game-engine skeleton option (fewer bones, Mixamo / Unreal-style names).
-3. Export glTF `skins` + `JOINTS_0/WEIGHTS_0`, and FBX `LimbNode` + `Skin`/`Cluster` + bind `Pose`.
-4. Animation clips (idle, walk, run) and an expression/face-pose system (MakeHuman also has expression targets).
+Garments are grown from the body surface or wrapped around it with convex-hull rings, so they fit every body shape.
 
-## License
+**Adult-only options:** topless and bottomless (no underwear) are only possible for characters aged 18+. Under-18 female characters always get a top, and every under-18 character keeps underwear. Bodies are anatomically neutral (no genital geometry).
 
-Generator code: yours. Character assets: CC0 (see `public/assets/LICENSE.txt`). Exported
-characters can be used commercially without attribution.
+## Rigging
+
+Characters are rigged automatically, with no markers to place. The skeleton is built on the generated body's joints, and MakeHuman's CC0 skin weights are mapped onto it. Every clothing, hair and accessory vertex then gets weights: proxies through their reference vertices, garments through the base mesh or the nearest body vertices. Weights follow through subdivision.
+
+| Option | Choices |
+| --- | --- |
+| Skeleton | **Game rig** (65 bones, Mixamo names; retargets to Mixamo / Unity Humanoid / Unreal), **lite** (25 bones, no fingers), **full MakeHuman** (163 bones incl. face), none |
+| Facial bones | jaw + eyes |
+| Rest pose | A-pose (natural) or T-pose (re-posed with linear blend skinning) |
+
+GLB exports a joint hierarchy, inverse bind matrices and JOINTS_0/WEIGHTS_0. FBX exports LimbNodes, Skin/Cluster deformers and a bind pose. The ZIP adds `<name>.rig.json`, the bind pose in an engine-neutral form. The viewer can test the rig with poses (arms up, wave, squat, fist) and motions (idle, walk). `scripts/blender_rig_check.py` imports the exports into Blender and checks that posing deforms the mesh correctly.
+
+## Roadmap: animation
+
+1. Keyframed clip format on top of `core/rig/poses.ts` (rotations in the rest frame, so one clip drives every skeleton type).
+2. Clip library (idle, walk, run, jump, attack, emotes) with blending in the viewer.
+3. Export clips as glTF `animations` and FBX `AnimationStack`s.
+4. Optional root motion, and facial animation through the jaw and eye bones and MakeHuman's expression targets.
