@@ -3,6 +3,8 @@ import { autoSkin, buildHuman, type Character } from '../core/human';
 import { triangleCount } from '../core/mesh';
 import { ageToYears, DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, yearsToAge, type HumanParams } from '../core/params';
 import { GARMENTS, garmentById, PATTERNS } from '../core/garments';
+import { MOTIONS, POSES } from '../core/rig/poses';
+import { RIG_LABELS, type RigType } from '../core/rig/skeletons';
 import { exportCharacter, type ExportFormat } from '../export';
 import { Viewer } from './viewer';
 
@@ -47,6 +49,9 @@ function regenerate() {
     current = ch;
     viewer.show(ch);
     $('#loading').hidden = true;
+    rigStatus.textContent = ch.rig
+      ? `✓ Auto-rigged: ${ch.rig.bones.length} bones · ${ch.rig.restPose}-pose · 4 influences per vertex`
+      : 'Rig off: static mesh export.';
     const skin = params.skin === 'auto' ? ` · skin: ${autoSkin(params, cat.skins).name}` : '';
     $('#stats').textContent =
       `${(ch.height * 100).toFixed(0)} cm · ${ageToYears(params.age).toFixed(0)} yrs · ` +
@@ -258,6 +263,48 @@ for (const d of DETAILS) detail.append(new Option({ low: 'Low (game LOD, ~5k tri
 detail.addEventListener('change', () => set({ detail: detail.value as HumanParams['detail'] }));
 sync.push(() => (detail.value = params.detail));
 detail.value = params.detail;
+// --- Rig ------------------------------------------------------------------------
+
+const rigStatus = el('div', { className: 'rig-status' });
+const poseButtons = el('div', { className: 'pose-buttons' });
+let activePose = 'Rest';
+const markPose = () => poseButtons.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.name === activePose));
+for (const name of Object.keys(POSES)) {
+  const b = el('button', { textContent: name });
+  b.dataset.name = name;
+  b.addEventListener('click', () => {
+    activePose = name;
+    viewer.setPose(POSES[name]);
+    markPose();
+  });
+  poseButtons.append(b);
+}
+for (const name of Object.keys(MOTIONS)) {
+  const b = el('button', { textContent: `▶ ${name}` });
+  b.dataset.name = `motion:${name}`;
+  b.addEventListener('click', () => {
+    activePose = `motion:${name}`;
+    viewer.playMotion(MOTIONS[name]);
+    markPose();
+  });
+  poseButtons.append(b);
+}
+markPose();
+controls.append(section('Rig', true,
+  el('div', { className: 'hint', textContent: 'Rigged automatically from the body: no markers needed. Exported GLB and FBX include the skeleton and skin weights (OBJ stays static).' }),
+  selectRow('Skeleton', (Object.keys(RIG_LABELS) as RigType[]).map((k) => [k, RIG_LABELS[k]]), () => params.rig, (v) => set({ rig: v as RigType })),
+  selectRow('Rest pose', [['A', 'A-pose (natural)'], ['T', 'T-pose (Mixamo / Unity Humanoid)']], () => params.restPose, (v) => set({ restPose: v as 'A' | 'T' })),
+  el('label', { className: 'acc' }, (() => {
+    const box = el('input', { type: 'checkbox' });
+    box.addEventListener('change', () => set({ faceBones: box.checked }));
+    sync.push(() => (box.checked = params.faceBones));
+    return box;
+  })(), 'Facial bones (jaw + eyes)'),
+  el('div', { className: 'sub', textContent: 'Test the rig' }),
+  poseButtons,
+  rigStatus,
+));
+
 controls.append(section('Output', true, el('div', { className: 'ctl wide' }, el('span', { textContent: 'Detail' }), detail), reset));
 
 // --- Header ------------------------------------------------------------------
@@ -318,6 +365,13 @@ const presetName = hash.get('preset');
 if (presetName && PRESETS[presetName]) params = { ...DEFAULT_PARAMS, ...PRESETS[presetName], name: presetName, detail: params.detail };
 sync.forEach((f) => f());
 regenerate();
+const poseName = hash.get('pose'), motionName = hash.get('motion');
+if (poseName && POSES[poseName]) viewer.setPose(POSES[poseName]);
+if (motionName && MOTIONS[motionName]) viewer.playMotion(MOTIONS[motionName]);
+if (hash.has('skeleton')) {
+  $<HTMLInputElement>('#skeleton').checked = true;
+  viewer.setSkeleton(true);
+}
 if (hash.has('face')) {
   $<HTMLInputElement>('#face').checked = true;
   viewer.focusFace(true);

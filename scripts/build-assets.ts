@@ -222,7 +222,28 @@ function buildBase() {
         best[v] = w;
         regions[v] = regionOf(bone);
       }
+  // Skin weights, CSR by vertex: wOff[v]..wOff[v+1] index into wBone (bone index in meta.bones) / wVal.
+  const boneIndex = new Map(meta.bones.map((b, i) => [b.name, i]));
+  const perVert: [number, number][][] = Array.from({ length: meta.vertexCount }, () => []);
+  for (const [bone, list] of Object.entries(weights)) for (const [v, w] of list) perVert[v].push([boneIndex.get(bone)!, w]);
+  const wOff = new Uint32Array(meta.vertexCount + 1);
+  const wBone: number[] = [], wVal: number[] = [];
+  perVert.forEach((l, v) => {
+    wOff[v] = wBone.length;
+    for (const [b, w] of l) {
+      wBone.push(b);
+      wVal.push(w);
+    }
+  });
+  wOff[meta.vertexCount] = wBone.length;
+  // Only vertices used by body faces count as "body" for garment fitting.
+  const used = new Uint8Array(meta.vertexCount);
+  for (const f of body) for (const v of f.v) used[v] = 1;
+  for (let v = 0; v < meta.vertexCount; v++) if (!used[v]) regions[v] = 255;
   const data = encodePack(meta, {
+    wOff,
+    wBone: Uint8Array.from(wBone),
+    wVal: Float32Array.from(wVal),
     regions,
     positions: Float32Array.from(obj.v),
     faceVerts: Uint32Array.from(body.flatMap((f) => f.v)),

@@ -1,5 +1,6 @@
 /** Binary glTF 2.0 (.glb) writer with embedded textures. One primitive per material. */
 import type { MeshData } from '../core/mesh';
+import { localTransform, quatOf, transpose, mulMV, type Rig } from '../core/rig/rig';
 import { hexToRgb, srgbToLinear } from '../core/math';
 
 const ARRAY_BUFFER = 34962;
@@ -10,7 +11,7 @@ const UNSIGNED_INT = 5125;
 
 export const mimeOf = (file: string) => (file.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
 
-export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Uint8Array>): Uint8Array {
+export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig): Uint8Array {
   const chunks: Uint8Array[] = [];
   const bufferViews: object[] = [];
   const accessors: object[] = [];
@@ -51,6 +52,13 @@ export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Ui
   const POSITION = addAttr(mesh.positions, 'VEC3', { min, max });
   const NORMAL = addAttr(mesh.normals, 'VEC3');
   const TEXCOORD_0 = addAttr(uvs, 'VEC2');
+  const skinned = !!(rig && mesh.joints && mesh.weights);
+  const attributes: Record<string, number> = { POSITION, NORMAL, TEXCOORD_0 };
+  if (skinned) {
+    accessors.push({ bufferView: addView(bytes(mesh.joints!), ARRAY_BUFFER), componentType: UNSIGNED_SHORT, count: vcount, type: 'VEC4' });
+    attributes.JOINTS_0 = accessors.length - 1;
+    attributes.WEIGHTS_0 = addAttr(mesh.weights!, 'VEC4');
+  }
 
   const small = vcount < 65536;
   const primitives = mesh.groups.map((g) => {
@@ -61,7 +69,7 @@ export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Ui
       count: g.indices.length,
       type: 'SCALAR',
     });
-    return { attributes: { POSITION, NORMAL, TEXCOORD_0 }, indices: accessors.length - 1, material: g.material, mode: 4 };
+    return { attributes, indices: accessors.length - 1, material: g.material, mode: 4 };
   });
 
   // Images / textures
@@ -98,11 +106,36 @@ export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Ui
     };
   });
 
+  // Skeleton: node 0 = mesh, node 1 = "Armature", bones from node 2.
+  const nodes: object[] = [{ name, mesh: 0, ...(skinned ? { skin: 0 } : {}) }];
+  const sceneNodes = [0];
+  let skins: object[] | undefined;
+  if (skinned && rig) {
+    const B = rig.bones;
+    const first = 2;
+    const roots = B.map((b, i) => (b.parent < 0 ? first + i : -1)).filter((i) => i >= 0);
+    nodes.push({ name: 'Armature', children: roots });
+    sceneNodes.push(1);
+    B.forEach((b, i) => {
+      const { t, R } = localTransform(B, i);
+      const children = B.map((c, k) => (c.parent === i ? first + k : -1)).filter((k) => k >= 0);
+      nodes.push({ name: b.name, translation: t, rotation: quatOf(R), ...(children.length ? { children } : {}) });
+    });
+    const ibm = new Float32Array(B.length * 16);
+    B.forEach((b, i) => {
+      const Rt = transpose(b.rot);
+      const t = mulMV(Rt, b.head).map((x) => -x);
+      ibm.set([Rt[0], Rt[1], Rt[2], 0, Rt[3], Rt[4], Rt[5], 0, Rt[6], Rt[7], Rt[8], 0, t[0], t[1], t[2], 1], i * 16);
+    });
+    accessors.push({ bufferView: addView(bytes(ibm)), componentType: FLOAT, count: B.length, type: 'MAT4' });
+    skins = [{ name: 'Armature', joints: B.map((_, i) => first + i), inverseBindMatrices: accessors.length - 1, skeleton: roots[0] }];
+  }
   const json = {
     asset: { version: '2.0', generator: '3d-gen character generator' },
     scene: 0,
-    scenes: [{ name: 'Scene', nodes: [0] }],
-    nodes: [{ name, mesh: 0 }],
+    scenes: [{ name: 'Scene', nodes: sceneNodes }],
+    nodes,
+    ...(skins ? { skins } : {}),
     meshes: [{ name, primitives }],
     materials,
     ...(images.length

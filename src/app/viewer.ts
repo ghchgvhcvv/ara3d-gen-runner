@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Character } from '../core/human';
+import { boneFor, type Motion, type Pose } from '../core/rig/poses';
+import { localTransform, quatOf } from '../core/rig/rig';
 
 /** three.js viewport that displays a generated Character. */
 export class Viewer {
@@ -10,7 +12,13 @@ export class Viewer {
   private camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
   private controls: OrbitControls;
   private mesh: THREE.Mesh | null = null;
-  private bones: THREE.LineSegments | null = null;
+  private helper: THREE.SkeletonHelper | null = null;
+  private bones: THREE.Bone[] = [];
+  private rest: THREE.Quaternion[] = [];
+  private current: Character | null = null;
+  private pose: Pose = {};
+  private motion: Motion | null = null;
+  private clock = new THREE.Clock();
   private loader = new THREE.TextureLoader();
   private texCache = new Map<string, THREE.Texture>();
   private framedHeight = 0;
@@ -61,6 +69,7 @@ export class Viewer {
     new ResizeObserver(() => this.resize()).observe(canvas);
     this.resize();
     const loop = () => {
+      if (this.motion) this.applyPose(this.motion.sample(this.clock.getElapsedTime() % this.motion.duration));
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
       requestAnimationFrame(loop);
@@ -83,6 +92,7 @@ export class Viewer {
       t = this.loader.load(this.textureUrl(file));
       t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       t.anisotropy = 8;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; // procedural fabrics tile beyond 0..1
       this.texCache.set(key, t);
     }
     return t;
@@ -133,11 +143,34 @@ export class Viewer {
       }
       return mat;
     });
-    this.mesh = new THREE.Mesh(geo, mats);
+    this.current = ch;
+    if (ch.rig && m.joints && m.weights) {
+      geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(m.joints, 4));
+      geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(m.weights, 4));
+      const sk = new THREE.SkinnedMesh(geo, mats);
+      this.bones = ch.rig.bones.map((b, i) => {
+        const bone = new THREE.Bone();
+        bone.name = b.name;
+        const { t, R } = localTransform(ch.rig!.bones, i);
+        bone.position.set(...t);
+        bone.quaternion.set(...quatOf(R));
+        return bone;
+      });
+      ch.rig.bones.forEach((b, i) => (b.parent >= 0 ? this.bones[b.parent] : sk).add(this.bones[i]));
+      this.rest = this.bones.map((b) => b.quaternion.clone());
+      sk.updateMatrixWorld(true);
+      sk.bind(new THREE.Skeleton(this.bones));
+      this.mesh = sk;
+    } else {
+      this.bones = [];
+      this.rest = [];
+      this.mesh = new THREE.Mesh(geo, mats);
+    }
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.scene.add(this.mesh);
-    this.drawSkeleton(ch);
+    this.drawSkeleton();
+    this.applyPose(this.pose);
 
     // Re-frame only when the height changes noticeably, so tweaking sliders doesn't jump the camera.
     if (Math.abs(ch.height - this.framedHeight) > 0.2) {
@@ -166,16 +199,53 @@ export class Viewer {
     this.frame();
   }
 
-  private drawSkeleton(ch: Character) {
-    if (this.bones) this.scene.remove(this.bones);
-    const pts: number[] = [];
-    for (const b of ch.bones) pts.push(...b.head, ...b.tail);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    this.bones = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#ffcc33', depthTest: false }));
-    this.bones.renderOrder = 10;
-    this.bones.visible = this.showSkeleton;
-    this.scene.add(this.bones);
+  private drawSkeleton() {
+    if (this.helper) {
+      this.scene.remove(this.helper);
+      this.helper.dispose();
+      this.helper = null;
+    }
+    if (!this.mesh || !this.bones.length) return;
+    this.helper = new THREE.SkeletonHelper(this.mesh);
+    (this.helper.material as THREE.LineBasicMaterial).depthTest = false;
+    this.helper.renderOrder = 10;
+    this.helper.visible = this.showSkeleton;
+    this.scene.add(this.helper);
+  }
+
+  /** Apply a test pose (rotations about rest-frame axes at each bone's head). */
+  private applyPose(pose: Pose) {
+    if (!this.current?.rig || !this.bones.length) return;
+    const rig = this.current.rig;
+    const byName = new Map(this.bones.map((b, i) => [b.name, i]));
+    this.bones.forEach((b, i) => b.quaternion.copy(this.rest[i]));
+    for (const [name, rots] of Object.entries(pose)) {
+      const target = boneFor(rig.type, name);
+      const i = target ? byName.get(target) : undefined;
+      if (i === undefined) continue;
+      // Axis given in the character's rest frame -> bone-local axis via the bone's world rest rotation.
+      const R = rig.bones[i].rot;
+      const worldRest = new THREE.Matrix4().set(R[0], R[3], R[6], 0, R[1], R[4], R[7], 0, R[2], R[5], R[8], 0, 0, 0, 0, 1);
+      const inv = worldRest.clone().transpose();
+      let delta = new THREE.Quaternion();
+      for (const { axis, deg } of rots) {
+        const a = new THREE.Vector3(...axis).applyMatrix4(inv).normalize();
+        delta = delta.multiply(new THREE.Quaternion().setFromAxisAngle(a, (deg * Math.PI) / 180));
+      }
+      this.bones[i].quaternion.multiply(delta);
+    }
+  }
+
+  setPose(pose: Pose) {
+    this.motion = null;
+    this.pose = pose;
+    this.applyPose(pose);
+  }
+
+  playMotion(m: Motion | null) {
+    this.motion = m;
+    this.clock.start();
+    if (!m) this.applyPose(this.pose);
   }
 
   setWireframe(on: boolean) {
@@ -185,7 +255,7 @@ export class Viewer {
 
   setSkeleton(on: boolean) {
     this.showSkeleton = on;
-    if (this.bones) this.bones.visible = on;
+    if (this.helper) this.helper.visible = on;
   }
 
   async snapshot(): Promise<Uint8Array> {

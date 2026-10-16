@@ -91,3 +91,7 @@ label.acc { flex-direction: row; align-items: center; gap: 8px; color: var(--tex
 .style-box { display: grid; gap: 6px; padding-left: 10px; border-left: 2px solid var(--border); }
 .style-box:empty { display: none; }
 .pieces { display: grid; gap: 8px; }
+.pose-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.pose-buttons button { padding: 5px 9px; font-size: 12px; }
+.pose-buttons button.on { border-color: var(--accent); color: #fff; }
+.rig-status { color: #7fd38b; font-size: 12px; }

@@ -3,6 +3,12 @@
  * conversion to per-vertex (UV-split) arrays.
  */
 
+/** Up to 4 bone influences per vertex. */
+export interface Skin {
+  j: Uint16Array; // 4 per vertex
+  w: Float32Array; // 4 per vertex, sum 1
+}
+
 /** A polygon mesh with face-varying UVs (as in OBJ). */
 export interface PolyMesh {
   positions: Float32Array; // xyz per vertex
@@ -10,6 +16,36 @@ export interface PolyMesh {
   faceVerts: Uint32Array; // vertex index per face corner
   faceUVs: Uint32Array; // uv index per face corner
   uvs: Float32Array; // uv pairs
+  /** Skin weights, once assigned. */
+  skin?: Skin;
+  /** Base-mesh vertex each vertex was derived from (-1 = none), for weight transfer. */
+  ref?: Int32Array;
+}
+
+/** Blend weighted source influences into the top 4, normalised. */
+export function blendInfluences(acc: Map<number, number>, j: Uint16Array, w: Float32Array, o: number): void {
+  const top = [...acc.entries()].filter(([, x]) => x > 1e-6).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const sum = top.reduce((s, [, x]) => s + x, 0) || 1;
+  for (let k = 0; k < 4; k++) {
+    j[o + k] = top[k]?.[0] ?? 0;
+    w[o + k] = top[k] ? top[k][1] / sum : 0;
+  }
+}
+
+/** Skin for new vertices that are weighted averages of source vertices. */
+function mixSkin(src: Skin, sources: { v: number[]; f: number }[]): Skin {
+  const j = new Uint16Array(sources.length * 4), w = new Float32Array(sources.length * 4);
+  const acc = new Map<number, number>();
+  sources.forEach((s, i) => {
+    acc.clear();
+    for (const v of s.v)
+      for (let k = 0; k < 4; k++) {
+        const b = src.j[v * 4 + k], x = src.w[v * 4 + k] * s.f;
+        if (x) acc.set(b, (acc.get(b) ?? 0) + x);
+      }
+    blendInfluences(acc, j, w, i * 4);
+  });
+  return { j, w };
 }
 
 /** Keep only faces passing `keep` and vertices they use. */
@@ -17,6 +53,7 @@ export function compact(m: PolyMesh, keep?: (f: number, corners: Uint32Array) =>
   const remap = new Int32Array(m.positions.length / 3).fill(-1);
   const sizes: number[] = [], verts: number[] = [], uvIdx: number[] = [];
   const pos: number[] = [];
+  const order: number[] = [];
   let c = 0;
   for (let f = 0; f < m.faceSizes.length; f++) {
     const n = m.faceSizes[f];
@@ -27,6 +64,7 @@ export function compact(m: PolyMesh, keep?: (f: number, corners: Uint32Array) =>
         const v = corners[k];
         if (remap[v] < 0) {
           remap[v] = pos.length / 3;
+          order.push(v);
           pos.push(m.positions[v * 3], m.positions[v * 3 + 1], m.positions[v * 3 + 2]);
         }
         verts.push(remap[v]);
@@ -41,6 +79,11 @@ export function compact(m: PolyMesh, keep?: (f: number, corners: Uint32Array) =>
     faceVerts: Uint32Array.from(verts),
     faceUVs: Uint32Array.from(uvIdx),
     uvs: m.uvs,
+    skin: m.skin && {
+      j: Uint16Array.from(order.flatMap((v) => [...m.skin!.j.subarray(v * 4, v * 4 + 4)])),
+      w: Float32Array.from(order.flatMap((v) => [...m.skin!.w.subarray(v * 4, v * 4 + 4)])),
+    },
+    ref: m.ref && Int32Array.from(order.map((v) => m.ref![v])),
   };
 }
 
@@ -174,7 +217,19 @@ export function subdivide(m: PolyMesh): PolyMesh {
       );
     }
   }
+  let skin: Skin | undefined;
+  if (m.skin) {
+    const sources: { v: number[]; f: number }[] = [];
+    for (let v = 0; v < nv; v++) sources.push({ v: [v], f: 1 });
+    for (let e = 0; e < ne; e++) sources.push({ v: [edgeA[e], edgeB[e]], f: 0.5 });
+    for (let f = 0; f < nf; f++) {
+      const n = m.faceSizes[f];
+      sources.push({ v: [...m.faceVerts.subarray(faceStart[f], faceStart[f] + n)], f: 1 / n });
+    }
+    skin = mixSkin(m.skin, sources);
+  }
   return {
+    skin,
     positions,
     faceSizes: new Uint8Array(outVerts.length / 4).fill(4),
     faceVerts: Uint32Array.from(outVerts),

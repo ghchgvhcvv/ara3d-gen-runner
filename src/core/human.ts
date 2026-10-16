@@ -6,22 +6,18 @@ import type { AssetLibrary, AssetMaterial, CatalogItem, ProxyMeta, Slider } from
 import { compact, subdivide, vertexNormals, type PolyMesh } from './geometry';
 import { buildGarments, dressing } from './garments';
 import type { Vec3 } from './math';
+import { applyTPose, baseSkin, placeBones, skeletonDefs, skinFromRefs, skinPart, VertexGrid, type Rig } from './rig/rig';
+import type { Skin } from './geometry';
 import { MeshAssembler, type Material, type MeshData } from './mesh';
 import { applyTargets, targetWeights } from './morph';
 import type { Pack } from './pack';
 import { ageToYears, type HumanParams } from './params';
 
-export interface Bone {
-  name: string;
-  parent: string | null;
-  head: Vec3;
-  tail: Vec3;
-}
-
 export interface Character {
   params: HumanParams;
   mesh: MeshData;
-  bones: Bone[];
+  /** Skeleton + bind pose (absent when rigging is off). */
+  rig?: Rig;
   /** Standing height in metres (body, without hair/hat). */
   height: number;
 }
@@ -69,9 +65,12 @@ function fit(proxy: Pack<ProxyMeta>, coords: Float32Array): Float32Array {
   return out;
 }
 
-function proxyMesh(proxy: Pack<ProxyMeta>, coords: Float32Array): PolyMesh {
+function proxyMesh(proxy: Pack<ProxyMeta>, coords: Float32Array, skin?: Skin): PolyMesh {
   const a = proxy.arrays as Record<string, Uint8Array & Uint32Array & Float32Array>;
-  return { positions: fit(proxy, coords), faceSizes: a.faceSizes, faceVerts: a.faceVerts, faceUVs: a.faceUVs, uvs: a.uvs };
+  return {
+    positions: fit(proxy, coords), faceSizes: a.faceSizes, faceVerts: a.faceVerts, faceUVs: a.faceUVs, uvs: a.uvs,
+    skin: skin && skinFromRefs(a.refs, a.weights, skin),
+  };
 }
 
 function toMaterial(m: AssetMaterial, overrides: Partial<Material> = {}): Material {
@@ -112,7 +111,19 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
 
   const coords = applyTargets(lib, targetWeights(p, slidersOf(lib)));
   const fv = lib.base.arrays.faceVerts as Uint32Array;
+  // Rigging: target skeleton and per-base-vertex weights; every part derives its weights from these.
+  const rigged = p.rig !== 'none';
+  const defs = rigged ? skeletonDefs(lib, { type: p.rig, face: p.faceBones }) : [];
+  const bskin = rigged ? baseSkin(lib, defs) : undefined;
+  const regions = lib.base.arrays.regions as Uint8Array;
+  let grid: VertexGrid | undefined;
+  const skinOf = (m: PolyMesh, k = 6): PolyMesh => {
+    if (!bskin || m.skin) return m;
+    grid ??= new VertexGrid(coords, (v) => regions[v] !== 255);
+    return { ...m, skin: skinPart(m, bskin, grid, k) };
+  };
   const fullBody: PolyMesh = {
+    skin: bskin,
     positions: coords,
     faceSizes: new Uint8Array(fv.length / 4).fill(4),
     faceVerts: fv,
@@ -131,39 +142,40 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
   const coveredFaces = new Uint8Array(fv.length / 4);
   for (const g of gparts) if (g.hides) for (let f = 0; f < coveredFaces.length; f++) coveredFaces[f] |= g.hides[f];
   let body: PolyMesh = pBody
-    ? proxyMesh(pBody, coords)
+    ? proxyMesh(pBody, coords, bskin)
     : compact(fullBody, (f, c) => !(assetDel[c[0]] | assetDel[c[1]] | assetDel[c[2]] | assetDel[c[3]]) && !coveredFaces[f]);
   const hd = p.detail === 'high';
   if (hd) body = subdivide(body);
 
   const parts: [PolyMesh, Material][] = [];
   parts.push([body, { ...toMaterial(skin.material!), name: 'Skin', color: tint(skin.material!.color, p.skinTint), roughness: 0.55 }]);
-  parts.push([proxyMesh(pEyes, coords), { ...toMaterial(eyeMat.material!), name: 'Eyes', alpha: 'mask' }]);
-  if (pBrows && brows) parts.push([proxyMesh(pBrows, coords), { ...toMaterial(brows.material!), name: 'Eyebrows' }]);
-  if (pLashes && lashes) parts.push([proxyMesh(pLashes, coords), { ...toMaterial(lashes.material!), name: 'Eyelashes' }]);
+  parts.push([proxyMesh(pEyes, coords, bskin), { ...toMaterial(eyeMat.material!), name: 'Eyes', alpha: 'mask' }]);
+  if (pBrows && brows) parts.push([proxyMesh(pBrows, coords, bskin), { ...toMaterial(brows.material!), name: 'Eyebrows' }]);
+  if (pLashes && lashes) parts.push([proxyMesh(pLashes, coords, bskin), { ...toMaterial(lashes.material!), name: 'Eyelashes' }]);
   const groundParts: PolyMesh[] = [];
   if (pShoes && shoesItem) {
-    const m = proxyMesh(pShoes, coords);
+    const m = proxyMesh(pShoes, coords, bskin);
     parts.push([hd ? subdivide(m) : m, { ...toMaterial(shoesItem.material!), name: 'Shoes' }]);
     groundParts.push(m);
   }
   if (pOutfit && outfit) {
-    const m = proxyMesh(pOutfit, coords);
+    const m = proxyMesh(pOutfit, coords, bskin);
     const mat = toMaterial(outfit.material!);
     parts.push([hd ? subdivide(m) : m, { ...mat, name: 'Outfit', color: tint(mat.color, p.outfitTint) }]);
   }
   for (const g of gparts) {
-    parts.push([hd && g.smooth ? subdivide(g.mesh) : g.mesh, g.material]);
+    const m = skinOf(g.mesh, g.smooth ? 4 : 8);
+    parts.push([hd && g.smooth ? subdivide(m) : m, g.material]);
     if (g.ground) groundParts.push(g.mesh);
   }
-  const hatMesh = pHat ? proxyMesh(pHat, coords) : undefined;
+  const hatMesh = pHat ? proxyMesh(pHat, coords, bskin) : undefined;
   // Lowest point of anything covering the crown: hair above it is trimmed.
   let brim = Infinity;
   for (const m of [hatMesh, ...gparts.filter((g) => g.headwear).map((g) => g.mesh)])
     if (m) for (let i = 1; i < m.positions.length; i += 3) brim = Math.min(brim, m.positions[i]);
   if (pHair && hair) {
     const mat = toMaterial(hair.material!);
-    let m = proxyMesh(pHair, coords);
+    let m = proxyMesh(pHair, coords, bskin);
     if (brim < Infinity) {
       const P = m.positions;
       m = compact(m, (_, c) => c.reduce((s, v) => s + P[v * 3 + 1], 0) / c.length < brim + 0.05);
@@ -185,19 +197,25 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
     }
     return out;
   };
+  const out = parts.map(([m, mat]) => [{ ...m, positions: xf(m.positions) }, mat] as const);
+
+  // --- Rig: bones placed on the morphed joints; optional T-pose re-posing ---
+  let rig: Rig | undefined;
+  if (rigged) {
+    const joint = (name: string): Vec3 => {
+      const idx = lib.base.meta.joints[name];
+      const s: Vec3 = [0, 0, 0];
+      for (const v of idx) for (let d = 0; d < 3; d++) s[d] += coords[v * 3 + d];
+      return [(s[0] / idx.length) * DM, (s[1] / idx.length - minY) * DM, (s[2] / idx.length) * DM];
+    };
+    let bones = placeBones(defs, joint);
+    if (p.restPose === 'T') bones = applyTPose(bones, out.map(([m]) => m));
+    rig = { type: p.rig, restPose: p.restPose, bones };
+  }
+
   const asm = new MeshAssembler();
-  for (const [m, mat] of parts) asm.add({ ...m, positions: xf(m.positions) }, mat);
-
-  // --- Skeleton joints: mean of their reference vertices ---
-  const joint = (name: string): Vec3 => {
-    const idx = lib.base.meta.joints[name];
-    const s: Vec3 = [0, 0, 0];
-    for (const v of idx) for (let d = 0; d < 3; d++) s[d] += coords[v * 3 + d];
-    return [(s[0] / idx.length) * DM, (s[1] / idx.length - minY) * DM, (s[2] / idx.length) * DM];
-  };
-  const bones = lib.base.meta.bones.map((b) => ({ name: b.name, parent: b.parent, head: joint(b.head), tail: joint(b.tail) }));
-
-  return { params: p, mesh: asm.build(), bones, height: (maxBodyY - minY) * DM };
+  for (const [m, mat] of out) asm.add(m, mat);
+  return { params: p, mesh: asm.build(), rig, height: (maxBodyY - minY) * DM };
 }
 
 /** Texture files referenced by a mesh. */

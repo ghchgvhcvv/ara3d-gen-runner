@@ -5,6 +5,7 @@
 import { zlibSync } from 'fflate';
 import type { MeshData } from '../core/mesh';
 import { hexToRgb, srgbToLinear } from '../core/math';
+import { localTransform, mulMV, transpose, type Mat3, type Rig } from '../core/rig/rig';
 
 // --- Low-level node tree -----------------------------------------------------
 
@@ -144,7 +145,21 @@ const objName = (name: string, cls: string) => `${name}\x00\x01${cls}`;
 
 const CM = 100; // metres -> centimetres
 
-export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Uint8Array>): Uint8Array {
+/** Column-major 4x4 from rotation + translation (cm). */
+function mat4(R: Mat3, t: number[]): Float64Array {
+  return Float64Array.from([R[0], R[1], R[2], 0, R[3], R[4], R[5], 0, R[6], R[7], R[8], 0, t[0], t[1], t[2], 1]);
+}
+
+/** Euler XYZ in degrees (R = Rz * Ry * Rx), FBX's default rotation order. */
+function eulerXYZ(R: Mat3): [number, number, number] {
+  const r20 = R[2], deg = 180 / Math.PI;
+  if (Math.abs(r20) < 0.99999) {
+    return [Math.atan2(R[5], R[8]) * deg, Math.asin(-r20) * deg, Math.atan2(R[1], R[0]) * deg];
+  }
+  return [Math.atan2(-R[7], R[4]) * deg, (r20 < 0 ? 90 : -90), 0];
+}
+
+export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig): Uint8Array {
   let nextId = 1_000_000;
   const id = () => nextId++;
   const geomId = id(), modelId = id(), docId = id();
@@ -303,6 +318,84 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
   });
   const videoCount = texObjs.length / 2;
 
+  // --- Skeleton + skin -----------------------------------------------------------
+  const rigObjs: FbxNode[] = [];
+  const rigConn: FbxNode[] = [];
+  let boneCount = 0, deformerCount = 0, attrCount = 0;
+  if (rig && mesh.joints && mesh.weights) {
+    const B = rig.bones;
+    const armId = id(), armAttr = id(), skinId = id(), poseId = id();
+    const boneIds = B.map(() => id()), attrIds = B.map(() => id());
+    const lcl = (t: number[], r: number[]) => [
+      P('Lcl Translation', 'Lcl Translation', '', 'A', D(t[0]), D(t[1]), D(t[2])),
+      P('Lcl Rotation', 'Lcl Rotation', '', 'A', D(r[0]), D(r[1]), D(r[2])),
+      P('Lcl Scaling', 'Lcl Scaling', '', 'A', D(1), D(1), D(1)),
+      P('DefaultAttributeIndex', 'int', 'Integer', '', I(0)),
+      P('InheritType', 'enum', '', '', I(1)),
+    ];
+    rigObjs.push(
+      N('NodeAttribute', [L(armAttr), S(objName('Armature', 'NodeAttribute')), S('Null')], [N('TypeFlags', [S('Null')])]),
+      N('Model', [L(armId), S(objName('Armature', 'Model')), S('Null')], [
+        N('Version', [I(232)]), N('Properties70', [], lcl([0, 0, 0], [0, 0, 0])), N('Culling', [S('CullingOff')]),
+      ]),
+    );
+    rigConn.push(N('C', [S('OO'), L(armId), L(0)]), N('C', [S('OO'), L(armAttr), L(armId)]));
+    // Per-bone vertex lists for clusters.
+    const idx: number[][] = B.map(() => []), wts: number[][] = B.map(() => []);
+    for (let v = 0; v < mesh.joints.length / 4; v++)
+      for (let k = 0; k < 4; k++) {
+        const w = mesh.weights[v * 4 + k];
+        if (w > 0) {
+          idx[mesh.joints[v * 4 + k]].push(v);
+          wts[mesh.joints[v * 4 + k]].push(w);
+        }
+      }
+    const poseNodes: FbxNode[] = [N('PoseNode', [], [N('Node', [L(modelId)]), N('Matrix', [Ad(mat4([1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0, 0]))])])];
+    rigObjs.push(N('Deformer', [L(skinId), S(objName(name, 'Deformer')), S('Skin')], [N('Version', [I(101)]), N('Link_DeformAcuracy', [D(50)])]));
+    rigConn.push(N('C', [S('OO'), L(skinId), L(geomId)]));
+    deformerCount = 1;
+    B.forEach((b, i) => {
+      const { t, R } = localTransform(B, i);
+      rigObjs.push(
+        N('NodeAttribute', [L(attrIds[i]), S(objName(b.name, 'NodeAttribute')), S('LimbNode')], [
+          N('Properties70', [], [P('Size', 'double', 'Number', '', D(3))]),
+          N('TypeFlags', [S('Skeleton')]),
+        ]),
+        N('Model', [L(boneIds[i]), S(objName(b.name, 'Model')), S('LimbNode')], [
+          N('Version', [I(232)]),
+          N('Properties70', [], lcl(t.map((x) => x * CM), eulerXYZ(R))),
+          N('MultiLayer', [I(0)]), N('MultiTake', [I(0)]), N('Shading', [C(true)]), N('Culling', [S('CullingOff')]),
+        ]),
+      );
+      rigConn.push(
+        N('C', [S('OO'), L(attrIds[i]), L(boneIds[i])]),
+        N('C', [S('OO'), L(boneIds[i]), L(b.parent >= 0 ? boneIds[b.parent] : armId)]),
+      );
+      const world = mat4(b.rot, b.head.map((x) => x * CM));
+      poseNodes.push(N('PoseNode', [], [N('Node', [L(boneIds[i])]), N('Matrix', [Ad(world)])]));
+      if (idx[i].length) {
+        const cid = id();
+        const Rt = transpose(b.rot);
+        const inv = mat4(Rt, mulMV(Rt, b.head.map((x) => x * CM) as [number, number, number]).map((x) => -x));
+        rigObjs.push(N('Deformer', [L(cid), S(objName(b.name, 'SubDeformer')), S('Cluster')], [
+          N('Version', [I(100)]),
+          N('UserData', [S(''), S('')]),
+          N('Indexes', [Ai(idx[i])]),
+          N('Weights', [Ad(wts[i])]),
+          N('Transform', [Ad(inv)]),
+          N('TransformLink', [Ad(world)]),
+        ]));
+        rigConn.push(N('C', [S('OO'), L(cid), L(skinId)]), N('C', [S('OO'), L(boneIds[i]), L(cid)]));
+        deformerCount++;
+      }
+    });
+    rigObjs.push(N('Pose', [L(poseId), S(objName('BindPose', 'Pose')), S('BindPose')], [
+      N('Type', [S('BindPose')]), N('Version', [I(100)]), N('NbPoseNodes', [I(poseNodes.length)]), ...poseNodes,
+    ]));
+    boneCount = B.length;
+    attrCount = B.length + 1;
+  }
+
   const now = new Date();
   const root: FbxNode[] = [
     N('FBXHeaderExtension', [], [
@@ -358,9 +451,16 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
     N('References'),
     N('Definitions', [], [
       N('Version', [I(100)]),
-      N('Count', [I(3 + mesh.materials.length + videoCount * 2)]),
+      N('Count', [I(3 + mesh.materials.length + videoCount * 2 + (boneCount ? boneCount + 1 + attrCount + deformerCount + 1 : 0))]),
       N('ObjectType', [S('GlobalSettings')], [N('Count', [I(1)])]),
-      N('ObjectType', [S('Model')], [N('Count', [I(1)])]),
+      N('ObjectType', [S('Model')], [N('Count', [I(1 + (boneCount ? boneCount + 1 : 0))])]),
+      ...(boneCount
+        ? [
+            N('ObjectType', [S('NodeAttribute')], [N('Count', [I(attrCount)])]),
+            N('ObjectType', [S('Deformer')], [N('Count', [I(deformerCount)])]),
+            N('ObjectType', [S('Pose')], [N('Count', [I(1)])]),
+          ]
+        : []),
       N('ObjectType', [S('Geometry')], [N('Count', [I(1)])]),
       N('ObjectType', [S('Material')], [N('Count', [I(mesh.materials.length)])]),
       ...(videoCount
@@ -370,12 +470,13 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
           ]
         : []),
     ]),
-    N('Objects', [], [geometry, model, ...materials, ...texObjs]),
+    N('Objects', [], [geometry, model, ...materials, ...texObjs, ...rigObjs]),
     N('Connections', [], [
       N('C', [S('OO'), L(modelId), L(0)]),
       N('C', [S('OO'), L(geomId), L(modelId)]),
       ...matIds.map((m) => N('C', [S('OO'), L(m), L(modelId)])),
       ...texConn,
+      ...rigConn,
     ]),
     N('Takes', [], [N('Current', [S('')])]),
   ];

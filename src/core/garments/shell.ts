@@ -124,6 +124,7 @@ export function buildShell(body: Body, faceVerts: Uint32Array, spec: ShellSpec):
   const tile = spec.tile ?? 0.25;
   const remap = new Map<number, number>();
   const pos: number[] = [];
+  const ref: number[] = [];
   const N = body.normals, C = body.coords;
   const offsetOf = (v: number) => (typeof spec.offset === 'number' ? spec.offset : spec.offset(body.info[v], body.p(v)));
   const shellVert = (v: number) => {
@@ -131,6 +132,7 @@ export function buildShell(body: Body, faceVerts: Uint32Array, spec: ShellSpec):
     if (i === undefined) {
       i = pos.length / 3;
       remap.set(v, i);
+      ref.push(v);
       const o = offsetOf(v);
       pos.push(C[v * 3] + N[v * 3] * o, C[v * 3 + 1] + N[v * 3 + 1] * o, C[v * 3 + 2] + N[v * 3 + 2] * o);
     }
@@ -242,6 +244,7 @@ export function buildShell(body: Body, faceVerts: Uint32Array, spec: ShellSpec):
     if (i === undefined) {
       i = pos.length / 3;
       inner.set(v, i);
+      ref.push(v);
       const o = Math.min(offsetOf(v) * 0.15, 0.01);
       const s = shift.get(v) ?? [0, 0, 0];
       pos.push(C[v * 3] + N[v * 3] * o + s[0], C[v * 3 + 1] + N[v * 3 + 1] * o + s[1], C[v * 3 + 2] + N[v * 3 + 2] * o + s[2]);
@@ -267,6 +270,7 @@ export function buildShell(body: Body, faceVerts: Uint32Array, spec: ShellSpec):
       faceVerts: Uint32Array.from(fv),
       faceUVs: Uint32Array.from(fu),
       uvs: Float32Array.from(uvs.data),
+      ref: Int32Array.from(ref),
     },
     covered,
   };

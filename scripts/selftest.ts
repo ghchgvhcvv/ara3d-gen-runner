@@ -31,6 +31,12 @@ function checkMesh(m: MeshData, label: string, height: number) {
     const corners = g.polySizes.reduce((s, n) => s + n, 0);
     if (corners !== g.polyIndices.length) fail(`${label}: polygon corner count mismatch`);
   }
+  if (m.joints && m.weights) {
+    for (let v = 0; v < vc; v++) {
+      const s = m.weights[v * 4] + m.weights[v * 4 + 1] + m.weights[v * 4 + 2] + m.weights[v * 4 + 3];
+      if (Math.abs(s - 1) > 1e-3) return fail(`${label}: weights of vertex ${v} sum to ${s}`);
+    }
+  }
   let minY = Infinity;
   for (let i = 1; i < m.positions.length; i += 3) minY = Math.min(minY, m.positions[i]);
   if (Math.abs(minY) > 0.002) fail(`${label}: not on ground (minY=${minY.toFixed(4)})`);
@@ -89,7 +95,12 @@ async function checkExports(ch: Awaited<ReturnType<typeof buildHuman>>, label: s
   const texCount = new Set(ch.mesh.materials.flatMap((m) => [m.map, m.normalMap]).filter(Boolean)).size;
   if ((json.images?.length ?? 0) !== texCount) fail(`${label}: GLB image count ${json.images?.length} != ${texCount}`);
 
+  if (ch.rig) {
+    if (!json.skins || json.skins[0].joints.length !== ch.rig.bones.length) fail(`${label}: GLB skin missing`);
+    if (json.meshes[0].primitives[0].attributes.JOINTS_0 === undefined) fail(`${label}: GLB JOINTS_0 missing`);
+  }
   const counts = parseFbx((await exportCharacter(lib, ch, 'fbx')).data, label);
+  if (ch.rig && (!counts.get('Pose') || (counts.get('Deformer') ?? 0) < 2)) fail(`${label}: FBX skin/bind pose missing`);
   if (counts.get('Material') !== ch.mesh.materials.length) fail(`${label}: FBX material count`);
   if ((counts.get('Video') ?? 0) !== texCount) fail(`${label}: FBX embedded texture count`);
 
@@ -132,11 +143,19 @@ cases.push(['barefoot', { ...DEFAULT_PARAMS, outfit: 'none', shoes: 'none', bott
   const adult = dressing({ ...DEFAULT_PARAMS, outfit: 'none', top: 'none', gender: 0, age: 0.6 });
   if (adult.top) fail('adult topless option not honoured');
 }
+// Rig variants
+for (const rig of ['game', 'game_lite', 'full', 'none'] as const)
+  for (const restPose of ['A', 'T'] as const)
+    cases.push([`rig ${rig} ${restPose}`, { ...DEFAULT_PARAMS, ...PRESETS['The Adventurer'], rig, restPose, faceBones: restPose === 'T' }]);
+cases.push(['rig low detail', { ...DEFAULT_PARAMS, detail: 'low', restPose: 'T' }]);
+
 for (const [label, p] of cases) {
   try {
     const ch = await buildHuman(lib, p);
+    if ((p.rig ?? 'game') !== 'none' && (!ch.rig || !ch.mesh.joints)) fail(`${label}: not rigged`);
+    if (ch.rig) for (const j of ch.mesh.joints!) if (j >= ch.rig.bones.length) { fail(`${label}: joint index out of range`); break; }
     checkMesh(ch.mesh, label, ch.height);
-    if (label.startsWith('preset') || label.startsWith('seed 1')) await checkExports(ch, label);
+    if (label.startsWith('preset') || label.startsWith('seed 1') || label.startsWith('rig')) await checkExports(ch, label);
   } catch (e) {
     fail(`${label}: threw ${(e as Error).stack}`);
   }

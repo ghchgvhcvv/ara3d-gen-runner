@@ -180,15 +180,20 @@ export function merge(parts: (PolyMesh | null | undefined)[]): PolyMesh | null {
   const list = parts.filter((p): p is PolyMesh => !!p && p.faceSizes.length > 0);
   if (!list.length) return null;
   const pos: number[] = [], uv: number[] = [], sizes: number[] = [], fv: number[] = [], fu: number[] = [];
+  const ref: number[] = [];
   for (const m of list) {
     const vo = pos.length / 3, uo = uv.length / 2;
+    for (let i = 0; i < m.positions.length / 3; i++) ref.push(m.ref ? m.ref[i] : -1);
     for (const x of m.positions) pos.push(x);
     for (const x of m.uvs) uv.push(x);
     for (const s of m.faceSizes) sizes.push(s);
     for (const v of m.faceVerts) fv.push(v + vo);
     for (const t of m.faceUVs) fu.push(t + uo);
   }
-  return { positions: Float32Array.from(pos), faceSizes: Uint8Array.from(sizes), faceVerts: Uint32Array.from(fv), faceUVs: Uint32Array.from(fu), uvs: Float32Array.from(uv) };
+  return {
+    positions: Float32Array.from(pos), faceSizes: Uint8Array.from(sizes), faceVerts: Uint32Array.from(fv), faceUVs: Uint32Array.from(fu), uvs: Float32Array.from(uv),
+    ref: ref.some((r) => r >= 0) ? Int32Array.from(ref) : undefined,
+  };
 }
 
 /**

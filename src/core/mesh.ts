@@ -37,6 +37,9 @@ export interface MeshData {
   uvs: Float32Array;
   groups: MeshGroup[];
   materials: Material[];
+  /** Skinning (present when rigged): 4 bone indices + 4 weights per vertex. */
+  joints?: Uint16Array;
+  weights?: Float32Array;
 }
 
 export function triangleCount(m: MeshData): number {
@@ -48,11 +51,15 @@ export class MeshAssembler {
   private pos: number[] = [];
   private nrm: number[] = [];
   private uv: number[] = [];
+  private jnt: number[] = [];
+  private wgt: number[] = [];
+  private skinned = true;
   private groups: MeshGroup[] = [];
   readonly materials: Material[] = [];
 
   add(part: PolyMesh, material: Material): void {
     const N = vertexNormals(part);
+    if (!part.skin) this.skinned = false;
     const base = this.pos.length / 3;
     const key = new Map<number, number>(); // (vertex, uv) -> output index
     const nUV = part.uvs.length / 2;
@@ -71,6 +78,10 @@ export class MeshAssembler {
           this.pos.push(part.positions[v * 3], part.positions[v * 3 + 1], part.positions[v * 3 + 2]);
           this.nrm.push(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]);
           this.uv.push(part.uvs[t * 2], part.uvs[t * 2 + 1]);
+          if (part.skin) for (let k = 0; k < 4; k++) {
+            this.jnt.push(part.skin.j[v * 4 + k]);
+            this.wgt.push(part.skin.w[v * 4 + k]);
+          }
         }
         out.push(o);
       }
@@ -94,6 +105,7 @@ export class MeshAssembler {
       uvs: Float32Array.from(this.uv),
       groups: this.groups,
       materials: this.materials,
+      ...(this.skinned && this.jnt.length ? { joints: Uint16Array.from(this.jnt), weights: Float32Array.from(this.wgt) } : {}),
     };
   }
 }

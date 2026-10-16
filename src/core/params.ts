@@ -1,5 +1,6 @@
 import type { Catalog } from './assets';
 import { rng } from './math';
+import type { RigType } from './rig/skeletons';
 
 export const DETAILS = ['low', 'medium', 'high'] as const;
 export type Detail = (typeof DETAILS)[number];
@@ -44,6 +45,12 @@ export interface HumanParams {
   outfitTint: string;
   // Output
   detail: Detail;
+  // Rigging
+  rig: RigType;
+  /** Add jaw + eye bones (for facial animation). */
+  faceBones: boolean;
+  /** Bind pose: MakeHuman's natural A-pose, or a T-pose (Mixamo / Unity Humanoid style). */
+  restPose: 'A' | 'T';
 }
 
 export const DEFAULT_PARAMS: HumanParams = {
@@ -77,6 +84,9 @@ export const DEFAULT_PARAMS: HumanParams = {
   hat: 'none',
   outfitTint: '#ffffff',
   detail: 'medium',
+  rig: 'game',
+  faceBones: false,
+  restPose: 'A',
 };
 
 /** MakeHuman age value <-> years. */

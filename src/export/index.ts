@@ -2,6 +2,7 @@ import { strToU8, zipSync, type Zippable } from 'fflate';
 import type { AssetLibrary } from '../core/assets';
 import { textureFiles, type Character } from '../core/human';
 import { triangleCount } from '../core/mesh';
+import { quatOf } from '../core/rig/rig';
 import { exportFBX } from './fbx';
 import { exportGLB, mimeOf } from './glb';
 import { exportOBJ } from './obj';
@@ -43,17 +44,18 @@ export async function exportCharacter(
   };
   switch (format) {
     case 'glb':
-      return { name: `${stem}.glb`, data: exportGLB(ch.mesh, stem, textures), mime: 'model/gltf-binary' };
+      return { name: `${stem}.glb`, data: exportGLB(ch.mesh, stem, textures, ch.rig), mime: 'model/gltf-binary' };
     case 'fbx':
-      return { name: `${stem}.fbx`, data: exportFBX(ch.mesh, stem, textures), mime: 'application/octet-stream' };
+      return { name: `${stem}.fbx`, data: exportFBX(ch.mesh, stem, textures, ch.rig), mime: 'application/octet-stream' };
     case 'obj':
       return { name: `${stem}_obj.zip`, data: zipSync(objFiles(), { level: 6 }), mime: 'application/zip' };
     case 'zip': {
       const files: Zippable = {
-        [`${stem}.glb`]: [exportGLB(ch.mesh, stem, textures), { level: 0 }],
-        [`${stem}.fbx`]: exportFBX(ch.mesh, stem, textures),
+        [`${stem}.glb`]: [exportGLB(ch.mesh, stem, textures, ch.rig), { level: 0 }],
+        [`${stem}.fbx`]: exportFBX(ch.mesh, stem, textures, ch.rig),
         obj: objFiles(),
         [`${stem}.params.json`]: strToU8(JSON.stringify(ch.params, null, 2)),
+        ...(ch.rig ? { [`${stem}.rig.json`]: strToU8(JSON.stringify(rigJson(ch), null, 1)) } : {}),
         'README.txt': strToU8(readme(ch, stem)),
         'LICENSE.txt': strToU8(LICENSE),
       };
@@ -61,6 +63,24 @@ export async function exportCharacter(
       return { name: `${stem}.zip`, data: zipSync({ [stem]: files }, { level: 6 }), mime: 'application/zip' };
     }
   }
+}
+
+/** Engine-neutral skeleton description (bind pose), for retargeting and the animation step. */
+function rigJson(ch: Character) {
+  const r = ch.rig!;
+  return {
+    type: r.type,
+    restPose: r.restPose,
+    units: 'metres, +Y up, character faces +Z',
+    boneAxes: 'local +Y along the bone, +Z toward the front',
+    bones: r.bones.map((b) => ({
+      name: b.name,
+      parent: b.parent >= 0 ? r.bones[b.parent].name : null,
+      head: b.head.map((x) => +x.toFixed(5)),
+      tail: b.tail.map((x) => +x.toFixed(5)),
+      rotation: quatOf(b.rot).map((x) => +x.toFixed(6)),
+    })),
+  };
 }
 
 function readme(ch: Character, stem: string): string {
@@ -74,12 +94,14 @@ function readme(ch: Character, stem: string): string {
     `Vertices:   ${mesh.positions.length / 3}`,
     `Materials:  ${mesh.materials.map((m) => m.name).join(', ')}`,
     `Detail:     ${ch.params.detail}`,
+    `Rig:        ${ch.rig ? `${ch.rig.bones.length} bones (${ch.rig.type}), ${ch.rig.restPose}-pose bind, 4 weights/vertex; Mixamo bone names on game rigs` : 'none'}`,
     '',
     'Files',
     `  ${stem}.glb          glTF 2.0 binary, textures embedded (metres, +Y up, faces +Z)`,
     `  ${stem}.fbx          FBX 7.4 binary, textures embedded (centimetres, +Y up, faces +Z)`,
     `  obj/                 Wavefront OBJ + MTL + textures/ (metres, quads)`,
     `  ${stem}.params.json  Generator settings - load to regenerate this character`,
+    ...(ch.rig ? [`  ${stem}.rig.json     Skeleton: bone names, hierarchy and bind pose (for retargeting)`] : []),
     '',
     `Textures: ${[...new Set(mesh.materials.flatMap((m) => [m.map, m.normalMap]).filter(Boolean))].map((f) => `${f} (${mimeOf(f!)})`).join(', ')}`,
     '',
