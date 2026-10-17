@@ -204,3 +204,5 @@ button.mini { padding: 2px 7px; font-size: 11px; }
 main:has(#export-panel:not([hidden])) #anim-bar { left: calc((100% - 444px) / 2); max-width: calc(100% - 468px); }
 button.xp-cat { background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; }
 button.xp-cat:hover { color: var(--text); }
+.pieces.inactive > :not(.hint:first-child) { opacity: 0.55; transition: opacity 0.2s; }
+.pieces.inactive > :hover { opacity: 1; }

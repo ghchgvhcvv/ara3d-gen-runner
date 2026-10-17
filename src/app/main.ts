@@ -141,7 +141,7 @@ function applyCharacter(ch: Character, p: HumanParams, ms: number) {
 
 function set(patch: Partial<HumanParams>) {
   params = { ...params, ...patch };
-  if ('age' in patch) sync.forEach((f) => f());
+  if ('age' in patch || 'outfit' in patch) sync.forEach((f) => f());
   regenerate();
 }
 
@@ -291,17 +291,29 @@ function styleControls(current: () => string) {
 function piecesPanel() {
   const opts = (slot: 'top' | 'bottom', none: string): [string, string][] =>
     [['none', none], ...GARMENTS.filter((g) => g.slot === slot && g.id !== 'briefs').map((g) => [g.id, g.label] as [string, string])];
+  // Always available: picking a top or bottom while a full outfit is worn switches to separate pieces.
+  const pick = (patch: Partial<HumanParams>) => {
+    set({ ...patch, outfit: 'none' });
+    sync.forEach((f) => f());
+  };
+  const note = el('div', { className: 'hint' });
   const panel = el('div', { className: 'pieces' },
+    note,
     el('div', { className: 'sub', textContent: 'Top' }),
-    selectRow('Top', opts('top', 'None (shirtless / topless)'), () => params.top, (v) => set({ top: v })),
+    selectRow('Top', opts('top', 'None (shirtless / topless)'), () => params.top, (v) => pick({ top: v })),
     styleControls(() => params.top),
     el('div', { className: 'hint', textContent: 'Topless is available for adult characters; under-18 female characters automatically get a top.' }),
     el('div', { className: 'sub', textContent: 'Bottom' }),
-    selectRow('Bottom', opts('bottom', 'None'), () => params.bottom, (v) => set({ bottom: v })),
+    selectRow('Bottom', opts('bottom', 'None'), () => params.bottom, (v) => pick({ bottom: v })),
     styleControls(() => params.bottom),
     underwearToggle(),
   );
-  const show = () => (panel.style.display = params.outfit === 'none' ? '' : 'none');
+  const show = () => {
+    const outfit = params.outfit !== 'none';
+    panel.classList.toggle('inactive', outfit);
+    note.textContent = outfit ? 'A full outfit is selected. Choosing a top or bottom switches to separate pieces.' : '';
+    note.style.display = outfit ? '' : 'none';
+  };
   sync.push(show);
   show();
   return panel;
