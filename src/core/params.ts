@@ -1,6 +1,8 @@
 import type { Catalog } from './assets';
 import { rng } from './math';
 import type { RigType } from './rig/skeletons';
+import type { WeaponId } from './props/weapons';
+import type { EarringId, FacialHairId, Metal, TattooId } from './looks';
 
 export const DETAILS = ['low', 'medium', 'high'] as const;
 export type Detail = (typeof DETAILS)[number];
@@ -28,8 +30,18 @@ export interface HumanParams {
   eyes: string;
   eyebrows: string; // id or 'none'
   eyelashes: string;
+  /** MakeHuman hair id, a procedural style ('buzz', 'mohawk', 'cornrows', 'box_braids') or 'none'. */
   hair: string;
   hairTint: string;
+  /** Colour of procedural hairstyles (buzz cut, spikes, braids). */
+  hairColor: string;
+  facialHair: FacialHairId;
+  beardColor: string;
+  /** Tattoo designs (adults 18+ only; ignored for younger characters). */
+  tattoos: TattooId[];
+  tattooInk: string;
+  earrings: EarringId;
+  earringMetal: Metal;
   /** MakeHuman outfit id, or 'none' to dress with separate pieces below. */
   outfit: string;
   /** Procedural top / bottom garment ids or 'none' (used when outfit is 'none'). 'none' top = shirtless/topless. */
@@ -58,6 +70,8 @@ export interface HumanParams {
   restPose: 'A' | 'T';
   /** Include the animation clips in GLB / FBX exports. */
   animations: boolean;
+  /** Weapon held in the right hand (attached to the WeaponR socket). */
+  weapon: WeaponId;
 }
 
 export const DEFAULT_PARAMS: HumanParams = {
@@ -82,6 +96,13 @@ export const DEFAULT_PARAMS: HumanParams = {
   eyelashes: 'eyelashes01',
   hair: 'short02',
   hairTint: '#ffffff',
+  hairColor: '#2a1e16',
+  facialHair: 'none',
+  beardColor: '#241a13',
+  tattoos: [],
+  tattooInk: '#1c2128',
+  earrings: 'none',
+  earringMetal: 'gold',
   outfit: 'male_casualsuit01',
   top: 'none',
   bottom: 'none',
@@ -96,6 +117,7 @@ export const DEFAULT_PARAMS: HumanParams = {
   faceBones: false,
   restPose: 'A',
   animations: true,
+  weapon: 'none',
 };
 
 /** MakeHuman age value <-> years. */
@@ -122,12 +144,13 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
   },
   'Heavy brute': {
     gender: 1, age: 0.62, muscle: 0.95, weight: 0.85, height: 0.72, proportions: 0.4, african: 0.85, asian: 0.05, caucasian: 0.1, hair: 'none',
-    outfit: 'male_worksuit01', shoes: 'shoes04', eyebrows: 'eyebrow003',
+    outfit: 'male_worksuit01', shoes: 'shoes04', eyebrows: 'eyebrow003', facialHair: 'full_beard', beardColor: '#16110d',
     modifiers: { 'head/head-fat': 0.4, 'chin/chin-width': 0.5, 'neck/neck-scale-horiz': 0.5, 'chin/chin-prominent': 0.4 },
   },
   Elder: {
     gender: 1, age: 0.95, muscle: 0.35, weight: 0.55, height: 0.4, hair: 'short04', outfit: 'male_elegantsuit01',
     shoes: 'shoes02', hat: 'fedora01', eyebrows: 'eyebrow006', african: 0.1, asian: 0.1, caucasian: 0.8,
+    facialHair: 'mustache', beardColor: '#b9b2a8',
   },
   Teen: {
     gender: 0.1, age: 0.42, muscle: 0.45, weight: 0.4, height: 0.5, hair: 'long01', outfit: 'female_casualsuit02',
@@ -146,17 +169,19 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
   },
   'The Soldier': {
     gender: 1, age: 0.55, muscle: 0.8, weight: 0.55, height: 0.5, african: 0.3, asian: 0.1, caucasian: 0.6,
-    hair: 'short03', eyebrows: 'eyebrow003', outfit: 'none', top: 'fatigue_shirt', bottom: 'fatigue_pants',
+    hair: 'buzz', facialHair: 'stubble', eyebrows: 'eyebrow003', outfit: 'none', top: 'fatigue_shirt', bottom: 'fatigue_pants',
     shoes: 'combat_boots', accessories: ['tactical_vest', 'helmet', 'belt'],
   },
   'The Cyberpunk Hacker': {
     gender: 0.15, age: 0.45, muscle: 0.45, weight: 0.35, height: 0.5, african: 0.05, asian: 0.85, caucasian: 0.1,
     hair: 'bob02', hairTint: '#d080ff', eyes: 'ice', eyebrows: 'eyebrow012', eyelashes: 'eyelashes03',
     outfit: 'none', top: 'techwear_jacket', bottom: 'techwear_pants', shoes: 'combat_boots', accessories: ['visor', 'neon_accents'],
+    earrings: 'studs', earringMetal: 'silver',
   },
   'The Wasteland Survivor': {
     gender: 0.9, age: 0.62, muscle: 0.75, weight: 0.4, height: 0.5, proportions: 0.45, african: 0.15, asian: 0.1, caucasian: 0.75,
-    hair: 'short01', eyebrows: 'eyebrow005', outfit: 'none', top: 'tattered_shirt', bottom: 'tattered_pants', shoes: 'combat_boots',
+    hair: 'mohawk', facialHair: 'short_beard', tattoos: ['sleeve_r'], earrings: 'small_hoops', earringMetal: 'silver',
+    eyebrows: 'eyebrow005', outfit: 'none', top: 'tattered_shirt', bottom: 'tattered_pants', shoes: 'combat_boots',
     accessories: ['leather_armor', 'goggles', 'arm_wraps', 'belt', 'crossed_straps'],
     modifiers: { 'chin/chin-prominent': 0.3, 'head/head-square': 0.3 },
   },
@@ -176,6 +201,7 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
   'The Yoruba Warrior': {
     gender: 1, age: 0.55, muscle: 0.75, weight: 0.5, height: 0.48, african: 1, asian: 0, caucasian: 0,
     hair: 'none', eyebrows: 'eyebrow003', outfit: 'none', top: 'long_tunic', bottom: 'trousers', shoes: 'sandals',
+    tattoos: ['face_marks'], facialHair: 'short_beard', beardColor: '#120e0b', tattooInk: '#1a1210',
     accessories: ['crossed_straps', 'cowrie_necklace', 'cowrie_armbands', 'amulets', 'fila_cap'],
     garmentStyles: {
       long_tunic: { pattern: 'asooke', color: '#4b1d3f', color2: '#d9b25f' },
@@ -197,7 +223,7 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
   },
   'The Dahomey Warrior': {
     gender: 0, age: 0.5, muscle: 0.8, weight: 0.42, height: 0.5, proportions: 0.85, breastSize: 0.45, african: 1, asian: 0, caucasian: 0,
-    hair: 'none', eyes: 'brown', eyebrows: 'eyebrow011', eyelashes: 'eyelashes02', outfit: 'none',
+    hair: 'cornrows', hairColor: '#17120f', earrings: 'small_hoops', eyes: 'brown', eyebrows: 'eyebrow011', eyelashes: 'eyelashes02', outfit: 'none',
     top: 'tunic', bottom: 'wrapper_knee', shoes: 'sandals', accessories: ['waist_sash', 'amulet_bandolier', 'arm_guards', 'amulets'],
     garmentStyles: {
       tunic: { pattern: 'asooke', color: '#1f2f5c', color2: '#c9a24a' },
@@ -207,7 +233,7 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
   },
   Detective: {
     gender: 0.95, age: 0.65, muscle: 0.55, weight: 0.5, height: 0.55, african: 0.2, asian: 0.6, caucasian: 0.2, hair: 'short01', outfit: 'male_casualsuit05',
-    hat: 'fedora_cocked', shoes: 'shoes06', eyes: 'grey', eyebrows: 'eyebrow007',
+    hat: 'fedora_cocked', shoes: 'shoes06', eyes: 'grey', eyebrows: 'eyebrow007', facialHair: 'stubble', beardColor: '#1a1410',
   },
 };
 
@@ -222,7 +248,10 @@ export function randomParams(seed: number, cat: Catalog, base: HumanParams = DEF
   const ids = (items: { id: string; tags: string[] }[], tag?: string) =>
     items.filter((i) => !tag || i.tags.some((t) => t.toLowerCase() === tag) || !i.tags.some((t) => /^(male|female)$/i.test(t))).map((i) => i.id);
   const FEMALE_HAIR = ['bob01', 'bob02', 'braid01', 'long01', 'ponytail01', 'afro01', 'short02'];
-  const MALE_HAIR = ['short01', 'short02', 'short03', 'short04', 'afro01', 'none'];
+  const MALE_HAIR = ['short01', 'short02', 'short03', 'short04', 'afro01', 'none', 'buzz', 'cornrows', 'box_braids'];
+  const NATURAL = ['#15100c', '#241a13', '#3b2a1d', '#5a3e27', '#7a5a38', '#a8875c'];
+  const FACIAL: HumanParams['facialHair'][] = ['none', 'none', 'none', 'stubble', 'stubble', 'mustache', 'goatee', 'short_beard', 'full_beard'];
+  const TATTOO_POOL: HumanParams['tattoos'][number][] = ['armband_l', 'sleeve_r', 'forearm_l', 'chest', 'back'];
   // Ethnic mix: usually dominated by one group.
   const mix = [r() ** 3, r() ** 3, r() ** 3];
   mix[Math.floor(r() * 3)] += 1;
@@ -257,6 +286,12 @@ export function randomParams(seed: number, cat: Catalog, base: HumanParams = DEF
     eyelashes: pick(r, cat.eyelashes).id,
     hair: pick(r, female ? FEMALE_HAIR : MALE_HAIR),
     hairTint: '#ffffff',
+    hairColor: pick(r, NATURAL),
+    facialHair: female ? 'none' : pick(r, FACIAL),
+    beardColor: pick(r, NATURAL),
+    tattoos: r() < 0.2 ? [pick(r, TATTOO_POOL)] : [],
+    earrings: r() < (female ? 0.5 : 0.12) ? pick(r, ['studs', 'small_hoops', 'big_hoops'] as const) : 'none',
+    earringMetal: r() < 0.6 ? 'gold' : 'silver',
     outfit: outfits.length ? pick(r, outfits) : 'none',
     shoes: pick(r, cat.shoes).id,
     hat: r() < 0.15 && cat.hats.length ? pick(r, cat.hats).id : 'none',

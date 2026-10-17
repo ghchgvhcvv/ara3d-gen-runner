@@ -106,7 +106,7 @@ function fbm(u: number, v: number, period: number, seed: number, oct = 4): numbe
 
 // --- Colour helpers ------------------------------------------------------------
 
-type RGB = [number, number, number];
+export type RGB = [number, number, number];
 export const rgb = (hex: string): RGB => {
   const v = parseInt(hex.replace('#', ''), 16);
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
@@ -122,7 +122,7 @@ export interface TexOut {
 }
 
 /** Fill a texture from a per-pixel function returning colour, alpha (0..1) and height. */
-function render(size: number, fn: (u: number, v: number) => { c: RGB; a?: number; h?: number }, wantAlpha: boolean, normalStrength = 0): TexOut {
+export function render(size: number, fn: (u: number, v: number) => { c: RGB; a?: number; h?: number }, wantAlpha: boolean, normalStrength = 0): TexOut {
   const px = new Uint8Array(size * size * 4);
   const height = normalStrength ? new Float32Array(size * size) : null;
   for (let y = 0; y < size; y++)

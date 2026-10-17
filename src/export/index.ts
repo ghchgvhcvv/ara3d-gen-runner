@@ -2,7 +2,7 @@ import { strToU8, zipSync, type Zippable } from 'fflate';
 import { CLIPS, clipById } from '../core/anim/clips';
 import { Animator, type BakedClip } from '../core/anim/evaluate';
 import type { AssetLibrary } from '../core/assets';
-import { textureFiles, type Character } from '../core/human';
+import { meshWithoutWeapon, textureFiles, weaponPropMesh, type Character } from '../core/human';
 import { quatOf } from '../core/rig/rig';
 import { exportFBX } from './fbx';
 import { exportGLB } from './glb';
@@ -98,10 +98,12 @@ export async function runExport(lib: AssetLibrary, ch: Character, plan: ExportPl
       if (f.path === 'LICENSE.txt') return strToU8(LICENSE);
       return extras.previewPng ?? new Uint8Array();
     }
+    const write = f.format === 'glb' ? exportGLB : exportFBX;
+    if (f.kind === 'prop') return write(weaponPropMesh(ch)!, `${stem}_${ch.weapon!.id}`, new Map(), undefined, [], {});
+    const mesh = plan.files.some((x) => x.kind === 'prop') ? meshWithoutWeapon(ch) : ch.mesh;
     const rig = f.rigged ? ch.rig : undefined;
     const clips = rig && f.clips.length ? bake(f.clips) : [];
-    const write = f.format === 'glb' ? exportGLB : exportFBX;
-    return write(ch.mesh, stem, f.meshless ? new Map() : textures, rig, clips, { meshless: f.meshless });
+    return write(mesh, stem, f.meshless ? new Map() : textures, rig, clips, { meshless: f.meshless });
   };
 
   if (!plan.zipped) {
@@ -131,6 +133,7 @@ export async function exportCharacter(
     clipMesh: false,
     rootMotion: false,
     loopSuffix: false,
+    weaponFile: 'held',
   };
   return runExport(lib, ch, planExport(ch, settings), extras);
 }

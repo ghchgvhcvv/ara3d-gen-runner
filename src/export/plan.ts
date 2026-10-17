@@ -8,6 +8,7 @@ import { clipById } from '../core/anim/clips';
 import type { Character } from '../core/human';
 import { triangleCount } from '../core/mesh';
 import { RIG_LABELS } from '../core/rig/skeletons';
+import { WEAPON_LABELS } from '../core/props/weapons';
 
 export type ExportMode = 'static' | 'rigged' | 'animated';
 export type FormatChoice = 'glb' | 'fbx' | 'obj' | 'all';
@@ -25,6 +26,8 @@ export interface ExportSettings {
   rootMotion: boolean;
   /** Name looping clips "Walk-loop" so Godot imports them as looping. */
   loopSuffix: boolean;
+  /** Held weapon: 'held' = in the hand, skinned to the WeaponR bone; 'separate' = its own prop file. */
+  weaponFile: 'held' | 'separate';
 }
 
 /** Clip name as written into exported files. */
@@ -41,6 +44,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   clipMesh: false,
   rootMotion: false,
   loopSuffix: false,
+  weaponFile: 'held',
 };
 
 export const MODE_LABELS: Record<ExportMode, { title: string; blurb: string }> = {
@@ -52,7 +56,7 @@ export const MODE_LABELS: Record<ExportMode, { title: string; blurb: string }> =
 export interface PlannedFile {
   /** Path inside the zip (or the download name for single files). */
   path: string;
-  kind: 'model' | 'clip' | 'obj' | 'meta';
+  kind: 'model' | 'clip' | 'obj' | 'meta' | 'prop';
   format?: 'glb' | 'fbx' | 'obj';
   rigged: boolean;
   /** Clip ids baked into this file. */
@@ -108,6 +112,9 @@ export function planExport(ch: Character, s: ExportSettings): ExportPlan {
   const clipName = (id: string) => exportClipName(id, s);
   const clipList = (ids: string[]) => ids.map(clipName).join(', ');
   const separate = mode === 'animated' && s.packaging === 'separate';
+  const weapon = ch.weapon;
+  const wName = weapon ? WEAPON_LABELS[weapon.id] : '';
+  const propFile = !!weapon && s.weaponFile === 'separate' && formats.some((f) => f !== 'obj');
 
   const files: PlannedFile[] = [];
   for (const f of formats) {
@@ -127,8 +134,14 @@ export function planExport(ch: Character, s: ExportSettings): ExportPlan {
         `${FMT[f]} model · ${tris} triangles · ${textures} textures embedded`,
         mode === 'static' ? 'static (no skeleton)' : rigDesc,
         embedded.length ? `${embedded.length} animation${embedded.length > 1 ? 's' : ''}: ${clipList(embedded)}` : mode !== 'static' ? 'no animations' : '',
+        weapon ? (propFile ? `no weapon (${wName.toLowerCase()} is a separate file)` : `holding ${wName.toLowerCase()}`) : '',
       ].filter(Boolean).join(' · '),
     });
+    if (propFile && weapon)
+      files.push({
+        path: base(`${stem}_${weapon.id}.${f}`), kind: 'prop', format: f, rigged: false, clips: [], meshless: false,
+        desc: `${wName} prop · static · origin at the grip: parent it to the WeaponR bone with zero offset`,
+      });
     if (separate)
       for (const c of clips) {
         const clip = clipById.get(c)!;
@@ -142,6 +155,10 @@ export function planExport(ch: Character, s: ExportSettings): ExportPlan {
     notes.push('Root motion on: walk/run/strafe clips move the hips forward or sideways instead of playing in place.');
   if (mode === 'animated' && s.loopSuffix && clips.some((c) => clipById.get(c)!.loop))
     notes.push('Looping clips are named "…-loop", which Godot imports as looping automatically.');
+  if (weapon && mode !== 'static' && !propFile)
+    notes.push(`The ${wName.toLowerCase()} is skinned to the WeaponR bone (child of the right hand). To swap weapons in-engine, export it as a separate file and attach props to WeaponR.`);
+  if (weapon && mode === 'static' && !propFile) notes.push(`The ${wName.toLowerCase()} is part of the static mesh, in the rest-pose hand.`);
+  if (weapon && s.weaponFile === 'separate' && formats.includes('obj')) notes.push('OBJ keeps the weapon in the mesh (no separate prop file for OBJ).');
   if (separate && !s.clipMesh)
     notes.push('Clip files hold only the skeleton + animation (Unity "model@clip" convention): import the model first, then the clips onto its skeleton.');
 

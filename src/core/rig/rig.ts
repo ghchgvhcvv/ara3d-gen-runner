@@ -287,7 +287,7 @@ function tposeSide(name: string): number {
  * Re-pose the bind pose into a T-pose with linear blend skinning. Mutates the
  * parts' positions and returns the re-posed bones.
  */
-export function applyTPose(bones: RigBone[], parts: PolyMesh[]): RigBone[] {
+export function applyTPose(bones: RigBone[], parts: PolyMesh[]): { bones: RigBone[]; move: (bone: number, p: Vec3) => Vec3 } {
   const X: Xform[] = [];
   bones.forEach((b, i) => {
     let x: Xform = b.parent >= 0 ? X[b.parent] : { R: IDENT, t: [0, 0, 0] };
@@ -319,11 +319,15 @@ export function applyTPose(bones: RigBone[], parts: PolyMesh[]): RigBone[] {
       P[v * 3 + 2] = o[2];
     }
   }
-  return bones.map((b, i) => {
-    const head = add(mulMV(X[i].R, b.head), X[i].t);
-    const tail = add(mulMV(X[i].R, b.tail), X[i].t);
-    return { ...b, head, tail, rot: boneFrame(sub(tail, head)) };
-  });
+  return {
+    bones: bones.map((b, i) => {
+      const head = add(mulMV(X[i].R, b.head), X[i].t);
+      const tail = add(mulMV(X[i].R, b.tail), X[i].t);
+      return { ...b, head, tail, rot: boneFrame(sub(tail, head)) };
+    }),
+    /** Move a point rigidly with a bone (e.g. joints the skeleton doesn't have bones for). */
+    move: (bone, p) => add(mulMV(X[bone].R, p), X[bone].t),
+  };
 }
 
 /** Local transform of a bone relative to its parent (for exporters / three.js). */

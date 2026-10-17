@@ -98,8 +98,8 @@ export function fullSkeleton(bones: { name: string; parent: string | null; head:
 }
 
 export const RIG_LABELS: Record<RigType, string> = {
-  game: 'Game rig — Mixamo-compatible (65 bones, fingers)',
-  game_lite: 'Game rig lite (25 bones, no fingers)',
-  full: 'Full MakeHuman rig (163 bones, face)',
+  game: 'Game rig — Mixamo-compatible (65 bones + weapon socket)',
+  game_lite: 'Game rig lite (25 bones + weapon socket, no fingers)',
+  full: 'Full MakeHuman rig (163 bones + weapon socket, face)',
   none: 'No rig (static mesh)',
 };

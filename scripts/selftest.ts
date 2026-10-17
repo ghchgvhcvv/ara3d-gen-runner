@@ -12,6 +12,8 @@ import { dressing, GARMENTS } from '../src/core/garments';
 import { Animator } from '../src/core/anim/evaluate';
 import { CLIPS } from '../src/core/anim/clips';
 import { nodeLibrary } from './node-assets';
+import { WEAPONS } from '../src/core/props/weapons';
+import { EARRINGS, FACIAL_HAIR, HAIRSTYLES, TATTOOS } from '../src/core/looks';
 
 let failures = 0;
 const fail = (msg: string) => {
@@ -162,6 +164,27 @@ async function checkExportModes() {
     }
   }
   console.log(`${combos.length} export modes checked`);
+
+  // Weapon as a separate prop file: character without it + a static prop per format.
+  const armed = await buildHuman(lib, { ...DEFAULT_PARAMS, weapon: 'rifle' });
+  for (const format of ['glb', 'fbx', 'all'] as const) {
+    const plan = planExport(armed, { ...DEFAULT_EXPORT, mode: 'animated', format, clips: ['rifle_aim'], weaponFile: 'separate' });
+    const props = plan.files.filter((f) => f.kind === 'prop');
+    if (props.length !== (format === 'all' ? 2 : 1)) fail(`weapon prop ${format}: ${props.length} prop files planned`);
+    const entries = unzipSync((await runExport(lib, armed, plan)).data);
+    for (const f of plan.files.filter((x) => x.format === 'glb')) {
+      const key = Object.keys(entries).find((k) => k.endsWith('/' + f.path))!;
+      const data = entries[key];
+      const dv = new DataView(data.buffer, data.byteOffset);
+      const j = JSON.parse(new TextDecoder().decode(data.subarray(20, 20 + dv.getUint32(12, true))));
+      const mats = j.materials.map((m: { name: string }) => m.name);
+      if (f.kind === 'prop' && (j.skins || !mats.includes('Gunmetal'))) fail(`weapon prop ${format}: prop file wrong (${mats})`);
+      if (f.kind === 'model' && mats.includes('Gunmetal')) fail(`weapon prop ${format}: character still holds the weapon`);
+    }
+  }
+  const held = planExport(armed, { ...DEFAULT_EXPORT, mode: 'rigged', format: 'glb' });
+  if (held.files.some((f) => f.kind === 'prop') || !held.files[0].desc.includes('holding')) fail('weapon held: plan wrong');
+  console.log('weapon prop export checked');
 }
 await checkExportModes();
 
@@ -184,8 +207,10 @@ for (const g of GARMENTS) {
 cases.push(['sandals', { ...DEFAULT_PARAMS, outfit: 'none', shoes: 'sandals' }]);
 cases.push(['barefoot', { ...DEFAULT_PARAMS, outfit: 'none', shoes: 'none', bottom: 'none' }]);
 
-// Modesty rules: under-18 female characters always get a top; nobody is fully undressed.
+// Modesty rules: under-18 female characters always get a top; nobody is fully undressed. Tattoos are adult-only.
 {
+  const inkedMinor = await buildHuman(lib, { ...DEFAULT_PARAMS, age: 0.3, hair: 'short02', tattoos: [...TATTOOS] });
+  if (inkedMinor.mesh.materials.some((m) => m.name === 'Skin details')) fail('minor has tattoos');
   const teen = dressing({ ...DEFAULT_PARAMS, outfit: 'none', top: 'none', bottom: 'none', gender: 0, age: 0.3 });
   if (teen.top !== 'tank_top') fail('minor without top');
   if (teen.bottom !== 'briefs') fail('no bottom fallback');
@@ -198,6 +223,20 @@ cases.push(['barefoot', { ...DEFAULT_PARAMS, outfit: 'none', shoes: 'none', bott
     if (minor.bottom !== 'briefs' || !minor.underwear) fail('minor without underwear');
   }
 }
+// Weapons on every rig (weapon vertices skinned only to the WeaponR socket).
+for (const weapon of WEAPONS.filter((w) => w !== 'none'))
+  for (const [rig, restPose] of [['game', 'A'], ['game', 'T'], ['full', 'A'], ['game_lite', 'T'], ['none', 'A']] as const)
+    cases.push([`weapon ${weapon} ${rig} ${restPose}`, { ...DEFAULT_PARAMS, weapon, rig, restPose }]);
+// Looks: procedural hair, facial hair, tattoos, earrings.
+for (const h of HAIRSTYLES)
+  for (const detail of DETAILS) cases.push([`look hair ${h.id} ${detail}`, { ...DEFAULT_PARAMS, hair: h.id, detail, seed: 3 }]);
+cases.push(['look mohawk under hat', { ...DEFAULT_PARAMS, hair: 'mohawk', hat: 'fedora01' }]);
+for (const f of FACIAL_HAIR) cases.push([`look beard ${f}`, { ...DEFAULT_PARAMS, facialHair: f, faceBones: true, detail: f === 'full_beard' ? 'high' : 'medium' }]);
+cases.push(['look all tattoos', { ...DEFAULT_PARAMS, outfit: 'none', tattoos: [...TATTOOS], detail: 'high', restPose: 'T' }]);
+cases.push(['look tattoos under clothes', { ...DEFAULT_PARAMS, tattoos: [...TATTOOS] }]);
+for (const e of EARRINGS) cases.push([`look earrings ${e}`, { ...DEFAULT_PARAMS, earrings: e, earringMetal: 'silver' }]);
+cases.push(['look everything, low', { ...DEFAULT_PARAMS, outfit: 'none', hair: 'box_braids', facialHair: 'full_beard', tattoos: [...TATTOOS], earrings: 'big_hoops', weapon: 'sword', detail: 'low' }]);
+
 // Rig variants
 for (const rig of ['game', 'game_lite', 'full', 'none'] as const)
   for (const restPose of ['A', 'T'] as const)
@@ -210,6 +249,23 @@ for (const [label, p] of cases) {
     if ((p.rig ?? 'game') !== 'none' && (!ch.rig || !ch.mesh.joints)) fail(`${label}: not rigged`);
     if (ch.rig) for (const j of ch.mesh.joints!) if (j >= ch.rig.bones.length) { fail(`${label}: joint index out of range`); break; }
     checkMesh(ch.mesh, label, ch.height);
+    const mats = ch.mesh.materials.map((m) => m.name);
+    if (p.weapon && p.weapon !== 'none') {
+      if (!!ch.weapon !== !!ch.rig) fail(`${label}: weapon present=${!!ch.weapon} rigged=${!!ch.rig}`);
+      if (ch.weapon && ch.rig) {
+        const socket = ch.rig.bones.findIndex((b) => b.name === 'WeaponR');
+        const n = ch.weapon.parts.length, g0 = ch.mesh.groups.length - n;
+        for (const g of ch.mesh.groups.slice(g0))
+          for (const v of g.indices) if (ch.mesh.joints![v * 4] !== socket || ch.mesh.weights![v * 4] !== 1) { fail(`${label}: weapon vertex not bound to WeaponR`); break; }
+      }
+    }
+    if (label.startsWith('look')) {
+      const wantOverlay = !!(p.tattoos?.length || (p.facialHair && p.facialHair !== 'none') || ['buzz', 'mohawk', 'cornrows', 'box_braids'].includes(p.hair));
+      if (wantOverlay !== mats.includes('Skin details')) fail(`${label}: skin overlay present=${mats.includes('Skin details')}`);
+      if (['mustache', 'goatee', 'short_beard', 'full_beard'].includes(p.facialHair) !== mats.includes('Beard')) fail(`${label}: beard cards`);
+      if ((p.earrings !== 'none') !== (mats.includes('Silver') || mats.includes('Gold'))) fail(`${label}: earrings`);
+      if (['mohawk', 'cornrows', 'box_braids'].includes(p.hair) && !p.hat?.startsWith('fedora') && !mats.some((m) => m === 'Braids' || m === 'Hair spikes')) fail(`${label}: hair geometry missing`);
+    }
     // Every clip evaluates to finite, unit quaternions on every rig.
     if (ch.rig && label.startsWith('rig'))
       for (const c of CLIPS) {
@@ -221,7 +277,8 @@ for (const [label, p] of cases) {
               break;
             }
       }
-    if (label.startsWith('preset') || label.startsWith('seed 1') || label.startsWith('rig')) await checkExports(ch, label);
+    if (label.startsWith('preset') || label.startsWith('seed 1') || label.startsWith('rig') || label.startsWith('look everything') || label === 'weapon rifle game T')
+      await checkExports(ch, label);
   } catch (e) {
     fail(`${label}: threw ${(e as Error).stack}`);
   }

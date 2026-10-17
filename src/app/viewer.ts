@@ -147,6 +147,8 @@ export class Viewer {
         mat.transparent = true;
         mat.opacity = mt.opacity ?? 1;
         mat.depthWrite = false;
+        // Without an alpha test, transparent texels of a textured overlay (tattoos, stubble) would still cast shadows.
+        if (mt.map) mat.alphaTest = 0.01;
       }
       return mat;
     });

@@ -7,6 +7,8 @@ import { CLIPS, clipById } from '../core/anim/clips';
 import { RIG_LABELS, type RigType } from '../core/rig/skeletons';
 import { DEFAULT_EXPORT, MODE_LABELS, planExport, runExport, type ExportSettings } from '../export';
 import { Viewer } from './viewer';
+import { WEAPONS, WEAPON_LABELS, type WeaponId } from '../core/props/weapons';
+import { EARRINGS, EARRING_LABELS, FACIAL_HAIR, FACIAL_HAIR_LABELS, HAIRSTYLES, TATTOOS, TATTOO_LABELS, isProceduralHair, type EarringId, type FacialHairId, type Metal, type TattooId } from '../core/looks';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
@@ -91,9 +93,11 @@ function slider(label: string, get: () => number, put: (v: number) => void, min 
   return el('div', { className: 'ctl' }, el('span', { textContent: label }), input, out);
 }
 
-function color(label: string, key: 'skinTint' | 'hairTint' | 'outfitTint') {
+type ColorKey = 'skinTint' | 'hairTint' | 'outfitTint' | 'hairColor' | 'beardColor' | 'tattooInk';
+/** Colour picker. `live` updates while dragging; otherwise on release (for colours that repaint textures). */
+function color(label: string, key: ColorKey, live = true) {
   const input = el('input', { type: 'color' });
-  input.addEventListener('input', () => set({ [key]: input.value }));
+  input.addEventListener(live ? 'input' : 'change', () => set({ [key]: input.value }));
   sync.push(() => (input.value = params[key]));
   input.value = params[key];
   return el('div', { className: 'ctl wide' }, el('span', { textContent: label }), input);
@@ -145,7 +149,12 @@ controls.append(
     el('div', { className: 'sub', textContent: 'Eyebrows' }), picker(cat.eyebrows, 'eyebrows', NONE),
     el('div', { className: 'sub', textContent: 'Eyelashes' }), picker(cat.eyelashes, 'eyelashes', NONE),
   ),
-  section('Hair', true, picker(cat.hair, 'hair', NONE), color('Hair tint', 'hairTint')),
+  section('Hair', true, hairPanel()),
+  section('Facial hair', false,
+    selectRow('Style', FACIAL_HAIR.map((f) => [f, FACIAL_HAIR_LABELS[f]]), () => params.facialHair, (v) => set({ facialHair: v as FacialHairId })),
+    color('Beard colour', 'beardColor', false),
+  ),
+  section('Tattoos', false, tattooPanel()),
   section('Clothing', true,
     el('div', { className: 'hint', textContent: 'Pick a full outfit, or "Separate pieces" to combine tops, bottoms, wrappers and accessories.' }),
     picker(cat.outfits, 'outfit', [{ id: 'none', name: 'Separate pieces' }]), color('Outfit tint', 'outfitTint'),
@@ -154,7 +163,8 @@ controls.append(
     picker(cat.shoes, 'shoes', [{ id: 'none', name: 'Barefoot' }, { id: 'sandals', name: 'Sandals' }, { id: 'combat_boots', name: 'Combat boots' }]),
     el('div', { className: 'sub', textContent: 'Hat' }), picker(cat.hats, 'hat', NONE),
   ),
-  section('Accessories', true, accessoriesPanel()),
+  section('Accessories', true, accessoriesPanel(), earringPanel()),
+  section('Weapon', false, weaponPanel()),
 );
 
 // --- Separate pieces & accessories -------------------------------------------------
@@ -262,6 +272,73 @@ function accessoriesPanel() {
     }
   }
   return wrap;
+}
+
+function hairPanel() {
+  const tint = color('Hair tint', 'hairTint');
+  const own = color('Hair colour', 'hairColor', false);
+  const show = () => {
+    const proc = isProceduralHair(params.hair);
+    tint.style.display = proc || params.hair === 'none' ? 'none' : '';
+    own.style.display = proc ? '' : 'none';
+  };
+  sync.push(show);
+  show();
+  const grid = picker(cat.hair, 'hair', [...NONE, ...HAIRSTYLES]);
+  grid.addEventListener('click', () => requestAnimationFrame(show));
+  return el('div', {}, grid, tint, own);
+}
+
+function tattooPanel() {
+  const wrap = el('div', {});
+  const note = el('div', { className: 'hint' });
+  const boxes: HTMLInputElement[] = [];
+  for (const t of TATTOOS) {
+    const box = el('input', { type: 'checkbox' });
+    box.addEventListener('change', () => {
+      const has = params.tattoos.includes(t);
+      set({ tattoos: has ? params.tattoos.filter((x) => x !== t) : [...params.tattoos, t as TattooId] });
+    });
+    boxes.push(box);
+    wrap.append(el('label', { className: 'acc' }, box, TATTOO_LABELS[t]));
+  }
+  const show = () => {
+    const adult = ageToYears(params.age) >= 18;
+    TATTOOS.forEach((t, i) => {
+      boxes[i].checked = params.tattoos.includes(t);
+      boxes[i].disabled = !adult;
+    });
+    note.textContent = adult ? 'Painted on the skin as a separate overlay layer, so they follow body shape and animation.' : 'Tattoos are available for adult (18+) characters only.';
+  };
+  sync.push(show);
+  show();
+  wrap.addEventListener('change', () => requestAnimationFrame(show));
+  wrap.append(color('Ink colour', 'tattooInk', false), note);
+  return wrap;
+}
+
+function earringPanel() {
+  return el('div', {},
+    el('div', { className: 'sub', textContent: 'Earrings' }),
+    selectRow('Earrings', EARRINGS.map((e) => [e, EARRING_LABELS[e]]), () => params.earrings, (v) => set({ earrings: v as EarringId })),
+    selectRow('Metal', [['gold', 'Gold'], ['silver', 'Silver']], () => params.earringMetal, (v) => set({ earringMetal: v as Metal })));
+}
+
+/** Clip that shows off each weapon when it is picked. */
+const WEAPON_IDLE: Partial<Record<WeaponId, string>> = { rifle: 'rifle_idle', pistol: 'pistol_idle', sword: 'sword_idle', knife: 'sword_idle' };
+
+function weaponPanel() {
+  const row = selectRow('Held weapon', WEAPONS.map((w) => [w, WEAPON_LABELS[w]]), () => params.weapon, (v) => {
+    set({ weapon: v as WeaponId });
+    const clip = WEAPON_IDLE[v as WeaponId];
+    if (clip && params.rig !== 'none') playClip(clip);
+  });
+  const note = el('div', {
+    className: 'hint',
+    textContent: 'Held in the right hand on a "WeaponR" socket bone, the standard way games attach props. ' +
+      'Shooter / sword animations are fitted to it. Export can keep it in the hand or save it as a separate prop file.',
+  });
+  return el('div', {}, row, note);
 }
 
 // Detail sliders, grouped like MakeHuman: one section per category.
@@ -489,6 +566,13 @@ function renderExport() {
       disabled: s.mode !== 'static',
     }),
     radio('all', s.format, 'All formats', (v) => setExport({ format: v }), { title: 'Every format in one zip' })));
+
+  if (current?.weapon) {
+    kids.push(h('Weapon'));
+    kids.push(el('div', { className: 'xp-row' },
+      radio('held', s.weaponFile, `In the hand (one file)`, (v) => setExport({ weaponFile: v }), { title: 'Weapon is part of the character mesh, skinned to the WeaponR bone' }),
+      radio('separate', s.weaponFile, 'Separate prop file', (v) => setExport({ weaponFile: v }), { title: 'Character without the weapon + the weapon as its own file, to attach to WeaponR in your engine' })));
+  }
 
   // Summary of exactly what will be downloaded
   kids.push(h('You will download'));

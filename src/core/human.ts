@@ -6,18 +6,26 @@ import type { AssetLibrary, AssetMaterial, CatalogItem, ProxyMeta, Slider } from
 import { compact, subdivide, vertexNormals, type PolyMesh } from './geometry';
 import { buildGarments, dressing } from './garments';
 import type { Vec3 } from './math';
-import { applyTPose, baseSkin, placeBones, skeletonDefs, skinFromRefs, skinPart, VertexGrid, type Rig } from './rig/rig';
+import { applyTPose, baseSkin, placeBones, quatOf, skeletonDefs, skinFromRefs, skinPart, VertexGrid, type Rig } from './rig/rig';
+import { socketBone, type HandJoints } from './rig/socket';
+import { buildWeapon, type WeaponId, type WeaponPart } from './props/weapons';
+import { Animator } from './anim/evaluate';
+import { clipById } from './anim/clips';
+import { qrot, type Q } from './anim/quat';
 import type { Skin } from './geometry';
-import { MeshAssembler, type Material, type MeshData } from './mesh';
+import { MeshAssembler, pickGroups, type Material, type MeshData } from './mesh';
 import { applyTargets, targetWeights } from './morph';
 import type { Pack } from './pack';
 import { ageToYears, type HumanParams } from './params';
+import { buildLooks } from './looks';
 
 export interface Character {
   params: HumanParams;
   mesh: MeshData;
   /** Skeleton + bind pose (absent when rigging is off). */
   rig?: Rig;
+  /** Held weapon: its parts in the weapon frame and the weapon -> WeaponR socket rotation. */
+  weapon?: { id: WeaponId; rot: Q; parts: WeaponPart[] };
   /** Standing height in metres (body, without hair/hat). */
   height: number;
 }
@@ -132,7 +140,8 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
   };
 
   // --- Procedural garments ---
-  const gparts = buildGarments(lib, coords, vertexNormals(fullBody), fv, pieces);
+  const bodyNormals = vertexNormals(fullBody);
+  const gparts = buildGarments(lib, coords, bodyNormals, fv, pieces);
 
   // --- Body (hide skin that clothes cover, to avoid poke-through) ---
   // Asset proxies hide any face touching one of their deleted vertices (MakeHuman behaviour);
@@ -147,8 +156,22 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
   const hd = p.detail === 'high';
   if (hd) body = subdivide(body);
 
+  // --- Tattoos, procedural hair, beards, earrings ---
+  const hiddenFaces = new Uint8Array(coveredFaces.length);
+  for (let f = 0; f < hiddenFaces.length; f++)
+    hiddenFaces[f] = coveredFaces[f] | assetDel[fv[f * 4]] | assetDel[fv[f * 4 + 1]] | assetDel[fv[f * 4 + 2]] | assetDel[fv[f * 4 + 3]];
+  const neckIdx = lib.base.meta.joints['neck01____head'];
+  const neckY = neckIdx.reduce((s, v) => s + coords[v * 3 + 1], 0) / neckIdx.length;
+  const looks = buildLooks(lib, { p, coords, normals: bodyNormals, fullBody, hidden: hiddenFaces, neckY, low });
+  // Hair and earrings follow the skull only; beards also the jaw and neck.
+  const skinTo = (m: PolyMesh, mask: (v: number) => boolean): PolyMesh =>
+    bskin ? { ...m, skin: skinPart(m, bskin, new VertexGrid(coords, mask), 4) } : m;
+  const skull = (v: number) => regions[v] === 0 && coords[v * 3 + 1] > neckY + 1.0;
+  const face = (v: number) => regions[v] === 0 || regions[v] === 1;
+
   const parts: [PolyMesh, Material][] = [];
   parts.push([body, { ...toMaterial(skin.material!), name: 'Skin', color: tint(skin.material!.color, p.skinTint), roughness: 0.55 }]);
+  if (looks.overlay) parts.push([hd ? subdivide(looks.overlay[0]) : looks.overlay[0], looks.overlay[1]]);
   parts.push([proxyMesh(pEyes, coords, bskin), { ...toMaterial(eyeMat.material!), name: 'Eyes', alpha: 'mask' }]);
   if (pBrows && brows) parts.push([proxyMesh(pBrows, coords, bskin), { ...toMaterial(brows.material!), name: 'Eyebrows' }]);
   if (pLashes && lashes) parts.push([proxyMesh(pLashes, coords, bskin), { ...toMaterial(lashes.material!), name: 'Eyelashes' }]);
@@ -182,6 +205,16 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
     }
     parts.push([m, { ...mat, name: 'Hair', color: tint(mat.color, p.hairTint), doubleSided: true }]);
   }
+  for (const [hm, mat] of looks.hair) {
+    let m = hm;
+    if (brim < Infinity) {
+      const P = m.positions;
+      m = compact(m, (_, c) => c.reduce((s, v) => s + P[v * 3 + 1], 0) / c.length < brim + 0.05);
+    }
+    if (m.faceSizes.length) parts.push([skinTo(m, skull), mat]);
+  }
+  for (const [m, mat] of looks.beard) parts.push([skinTo(m, face), mat]);
+  for (const [m, mat] of looks.jewelry) parts.push([skinTo(m, face), mat]);
   if (hatMesh && hat) parts.push([hatMesh, { ...toMaterial(hat.material!), name: 'Hat' }]);
 
   // --- To metres, feet on the ground ---
@@ -201,6 +234,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
 
   // --- Rig: bones placed on the morphed joints; optional T-pose re-posing ---
   let rig: Rig | undefined;
+  let weapon: Character['weapon'];
   if (rigged) {
     const joint = (name: string): Vec3 => {
       const idx = lib.base.meta.joints[name];
@@ -209,16 +243,81 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
       return [(s[0] / idx.length) * DM, (s[1] / idx.length - minY) * DM, (s[2] / idx.length) * DM];
     };
     let bones = placeBones(defs, joint);
-    if (p.restPose === 'T') bones = applyTPose(bones, out.map(([m]) => m));
+    const handIdx = bones.findIndex((b) => b.name === (p.rig === 'full' ? 'wrist.R' : 'RightHand'));
+    let hand: HandJoints = {
+      wrist: joint('wrist.R____head'), index: joint('finger2-1.R____head'), middle: joint('finger3-1.R____head'),
+      pinky: joint('finger5-1.R____head'), thumbTip: joint('finger1-3.R____tail'),
+    };
+    if (p.restPose === 'T') {
+      const posed = applyTPose(bones, out.map(([m]) => m));
+      bones = posed.bones;
+      hand = Object.fromEntries(Object.entries(hand).map(([k, v]) => [k, posed.move(handIdx, v)])) as unknown as HandJoints;
+    }
+    const sizeK = ((maxBodyY - minY) * DM) / 1.8;
+    bones.push(socketBone(hand, handIdx, sizeK));
     rig = { type: p.rig, restPose: p.restPose, bones };
+
+    // Weapon: modelled in its own frame, mapped onto the socket and fitted to its reference pose.
+    if (p.weapon && p.weapon !== 'none') {
+      const socket = bones.length - 1;
+      let fitRot: Q = [0, 0, 0, 1];
+      let supportZ = 0.3;
+      const ref = p.weapon === 'rifle' ? 'rifle_aim' : p.weapon === 'pistol' ? 'pistol_aim' : null;
+      if (ref) {
+        const a = new Animator(rig);
+        const f = a.weaponFit(a.frame(clipById.get(ref)!, 0), socket);
+        fitRot = f.rot;
+        supportZ = f.supportZ;
+      }
+      const parts = buildWeapon(p.weapon, { supportZ });
+      weapon = { id: p.weapon, rot: fitRot, parts };
+      const sb = bones[socket];
+      const sq = quatOf(sb.rot);
+      for (const wp of parts) {
+        const P = wp.mesh.positions;
+        const positions = new Float32Array(P.length);
+        for (let i = 0; i < P.length; i += 3) {
+          const local = qrot(fitRot, [P[i], P[i + 1], P[i + 2]]);
+          const w = qrot(sq, local);
+          positions[i] = sb.head[0] + w[0];
+          positions[i + 1] = sb.head[1] + w[1];
+          positions[i + 2] = sb.head[2] + w[2];
+        }
+        const n = P.length / 3;
+        const j = new Uint16Array(n * 4), wts = new Float32Array(n * 4);
+        for (let v = 0; v < n; v++) {
+          j[v * 4] = socket;
+          wts[v * 4] = 1;
+        }
+        out.push([{ ...wp.mesh, positions, skin: { j, w: wts } }, wp.material]);
+      }
+    }
   }
 
   const asm = new MeshAssembler();
   for (const [m, mat] of out) asm.add(m, mat);
-  return { params: p, mesh: asm.build(), rig, height: (maxBodyY - minY) * DM };
+  return { params: p, mesh: asm.build(), rig, weapon, height: (maxBodyY - minY) * DM };
 }
 
 /** Texture files referenced by a mesh. */
 export function textureFiles(mesh: MeshData): string[] {
   return [...new Set(mesh.materials.flatMap((m) => [m.map, m.normalMap].filter((x): x is string => !!x)))];
+}
+
+/** The character without its held weapon (the weapon parts are the last mesh groups). */
+export function meshWithoutWeapon(ch: Character): MeshData {
+  const n = ch.weapon?.parts.length ?? 0;
+  return n ? pickGroups(ch.mesh, (g) => g < ch.mesh.groups.length - n) : ch.mesh;
+}
+
+/** The held weapon as a standalone prop in WeaponR socket space: attach it to that bone with zero offset. */
+export function weaponPropMesh(ch: Character): MeshData | undefined {
+  if (!ch.weapon) return undefined;
+  const asm = new MeshAssembler();
+  for (const wp of ch.weapon.parts) {
+    const P = wp.mesh.positions, positions = new Float32Array(P.length);
+    for (let i = 0; i < P.length; i += 3) positions.set(qrot(ch.weapon.rot, [P[i], P[i + 1], P[i + 2]]), i);
+    asm.add({ ...wp.mesh, positions, skin: undefined }, wp.material);
+  }
+  return asm.build();
 }

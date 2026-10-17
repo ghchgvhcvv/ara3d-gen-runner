@@ -109,3 +109,30 @@ export class MeshAssembler {
     };
   }
 }
+
+/** A copy of `m` with only the groups `keep` accepts (vertices compacted, materials renumbered). */
+export function pickGroups(m: MeshData, keep: (group: number) => boolean): MeshData {
+  const remap = new Int32Array(m.positions.length / 3).fill(-1);
+  const kept = m.groups.filter((_, i) => keep(i));
+  let n = 0;
+  for (const g of kept) for (const v of g.indices) if (remap[v] < 0) remap[v] = n++;
+  for (const g of kept) for (const v of g.polyIndices) if (remap[v] < 0) remap[v] = n++;
+  const take = <T extends Float32Array | Uint16Array>(src: T, k: number): T => {
+    const out = new (src.constructor as new (n: number) => T)(n * k);
+    for (let v = 0; v < remap.length; v++) if (remap[v] >= 0) for (let c = 0; c < k; c++) out[remap[v] * k + c] = src[v * k + c];
+    return out;
+  };
+  return {
+    positions: take(m.positions, 3),
+    normals: take(m.normals, 3),
+    uvs: take(m.uvs, 2),
+    materials: kept.map((g) => m.materials[g.material]),
+    groups: kept.map((g, i) => ({
+      material: i,
+      indices: g.indices.map((v) => remap[v]),
+      polySizes: g.polySizes,
+      polyIndices: g.polyIndices.map((v) => remap[v]),
+    })),
+    ...(m.joints && m.weights ? { joints: take(m.joints, 4), weights: take(m.weights, 4) } : {}),
+  };
+}

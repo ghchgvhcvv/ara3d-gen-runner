@@ -128,6 +128,24 @@ export class Animator {
     this.restFootY = Math.min(...this.feet.map((i) => B[i].head[1]));
   }
 
+  /**
+   * Fit a weapon held in the WeaponR socket to a reference frame (e.g. rifle aim):
+   * returns the weapon-model -> socket rotation that makes the barrel point along the
+   * chest's forward axis, and how far down the barrel the support (left) hand is.
+   */
+  weaponFit(f: Frame, socket: number): { rot: Q; supportZ: number } {
+    const B = this.rig.bones;
+    const world: Q[] = [];
+    B.forEach((b, i) => (world[i] = b.parent < 0 ? f.rot[i] : qmul(world[b.parent], f.rot[i])));
+    const pos = this.positions(f);
+    const chest = this.idx.get('Spine2') ?? this.idx.get('Spine1') ?? 0;
+    const cd = qmul(world[chest], qconj(this.animRest[chest]));
+    const rot = qmul(qconj(world[socket]), cd);
+    const lh = this.idx.get('LeftHand');
+    const supportZ = lh !== undefined ? qrot(qconj(cd), sub3(pos[lh], pos[socket]))[2] : 0.3;
+    return { rot, supportZ };
+  }
+
   /** World-space joint positions for a frame (forward kinematics). */
   positions(f: Frame): Vec3[] {
     const B = this.rig.bones;
