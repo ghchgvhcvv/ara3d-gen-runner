@@ -37,6 +37,11 @@ export interface HandTarget {
   /** Optional hand orientation: direction from wrist to fingers, and palm normal (chest space). */
   dir?: [number, number, number];
   palm?: [number, number, number];
+  /**
+   * Support hand on a weapon held in the other hand's WeaponR socket: the target is taken
+   * from where the weapon actually is (pos/dir/palm above are only a fallback).
+   */
+  support?: 'rifle';
 }
 
 export interface Sample {
@@ -454,17 +459,17 @@ const lerp3 = (a: [number, number, number], b: [number, number, number], t: numb
 // Shouldered aim: stock in the right shoulder pocket, grip below the bore, support hand on the handguard.
 const AIM: Hold = {
   Right: { pos: v(-0.13, -0.19, 0.22), pole: v(-1, -0.9, -0.2), dir: v(0.1, -0.55, 0.83), palm: v(1, 0, 0) },
-  Left: { pos: v(-0.01, -0.13, 0.5), pole: v(0.4, -1, 0), dir: v(-0.35, 0.2, 0.91), palm: v(0, 1, 0) },
+  Left: { pos: v(-0.01, -0.13, 0.5), pole: v(0.4, -1, 0), dir: v(-0.35, 0.2, 0.91), palm: v(0, 1, 0), support: 'rifle' },
 };
 // Low ready: same hold, muzzle angled down ~40 degrees.
 const READY: Hold = {
   Right: { pos: v(-0.15, -0.36, 0.17), pole: v(-1, -0.6, -0.4), dir: v(0.1, -0.75, 0.65), palm: v(1, 0, 0) },
-  Left: { pos: v(0.03, -0.42, 0.4), pole: v(0.6, -1, 0), dir: v(-0.35, 0.05, 0.93), palm: v(0, 1, 0) },
+  Left: { pos: v(0.03, -0.42, 0.4), pole: v(0.6, -1, 0), dir: v(-0.35, 0.05, 0.93), palm: v(0, 1, 0), support: 'rifle' },
 };
 // Sprint: rifle carried diagonally across the chest.
 const SPRINT: Hold = {
   Right: { pos: v(-0.17, -0.42, 0.13), pole: v(-1, -0.5, -0.5), dir: v(0.3, -0.75, 0.55), palm: v(1, 0, 0) },
-  Left: { pos: v(0.12, -0.2, 0.27), pole: v(0.8, -1, 0), dir: v(-0.6, 0.35, 0.7), palm: v(0, 1, 0) },
+  Left: { pos: v(0.12, -0.2, 0.27), pole: v(0.8, -1, 0), dir: v(-0.6, 0.35, 0.7), palm: v(0, 1, 0), support: 'rifle' },
 };
 
 /** Upper body for a rifle hold: shoulders square, head on the sights when aiming. */

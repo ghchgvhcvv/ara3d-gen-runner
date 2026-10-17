@@ -10,7 +10,6 @@ import { applyTPose, baseSkin, placeBones, quatOf, skeletonDefs, skinFromRefs, s
 import { socketBone, type HandJoints } from './rig/socket';
 import { buildWeapon, type WeaponId, type WeaponPart } from './props/weapons';
 import { Animator } from './anim/evaluate';
-import { clipById } from './anim/clips';
 import { qrot, type Q } from './anim/quat';
 import type { Skin } from './geometry';
 import { MeshAssembler, pickGroups, type Material, type MeshData } from './mesh';
@@ -275,7 +274,8 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
       const ref = p.weapon === 'rifle' ? 'rifle_aim' : p.weapon === 'pistol' ? 'pistol_aim' : null;
       if (ref) {
         const a = new Animator(rig);
-        const f = a.weaponFit(a.frame(clipById.get(ref)!, 0), socket);
+        // The same fit the animations use, so the support hand lands on the handguard.
+        const f = a.fitFor(ref === 'rifle_aim' ? 'rifle' : 'pistol');
         fitRot = f.rot;
         supportZ = f.supportZ;
       }

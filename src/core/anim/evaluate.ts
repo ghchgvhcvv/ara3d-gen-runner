@@ -7,7 +7,7 @@
 import type { Vec3 } from '../math';
 import { boneFor } from '../rig/poses';
 import { quatOf, type Rig } from '../rig/rig';
-import type { Ch, Clip, Sample } from './clips';
+import { clipById, type Ch, type Clip, type HandTarget, type Sample } from './clips';
 import { qaxis, qconj, qfromTo, QI, qmul, qrot, type Q } from './quat';
 
 export interface Frame {
@@ -21,6 +21,9 @@ export interface Frame {
 const LYING_HEIGHT = 0.12;
 
 const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+/** Range of the rifle's support grip down the barrel from the pistol grip (metres; matches the rifle model). */
+export const SUPPORT_MIN = 0.16, SUPPORT_MAX = 0.42;
+const add3 = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const dist = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const norm = (v: Vec3): Vec3 => {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
@@ -48,6 +51,9 @@ export class Animator {
   private animRest: Q[];
   private names: (string | null)[];
   private scale: number;
+  /** WeaponR socket bone (-1 if the rig has none) and cached weapon fits. */
+  private socket: number;
+  private fits = new Map<string, { rot: Q; supportZ: number }>();
 
   constructor(readonly rig: Rig) {
     const B = rig.bones;
@@ -126,6 +132,7 @@ export class Animator {
     }
     this.feet = B.map((_, i) => i).filter((i) => /^(Left|Right)(Foot|ToeBase|Toe_End)$/.test(this.names[i] ?? '') || /^(foot|toe\d-\d)\.[LR]$/.test(B[i].name));
     this.restFootY = Math.min(...this.feet.map((i) => B[i].head[1]));
+    this.socket = B.findIndex((b) => b.name === 'WeaponR');
   }
 
   /**
@@ -170,9 +177,86 @@ export class Animator {
     return { rot: [...this.restLocal], rootPos };
   }
 
-  frame(clip: Clip, time: number, opts: { rootMotion?: boolean } = {}): Frame {
+  frame(clip: Clip, time: number, opts: { rootMotion?: boolean; noSupport?: boolean } = {}): Frame {
+    let s = clip.sample(time);
+    const left = s.ik?.Left;
+    if (left?.support && !opts.noSupport && this.socket >= 0) {
+      // Two passes: solve without the support hand, see where the weapon ended up, then
+      // put the support hand on it.
+      const first = this.solve({ ...s, ik: { ...s.ik, Left: undefined } }, clip, time, opts);
+      s = { ...s, ik: { ...s.ik, Left: this.supportTarget(left, first.world, first.pos) } };
+    }
+    return this.solve(s, clip, time, opts).frame;
+  }
+
+  /** Socket-space fit of a weapon to its reference aiming clip (cached): see weaponFit. */
+  fitFor(kind: 'rifle' | 'pistol'): { rot: Q; supportZ: number } {
+    let f = this.fits.get(kind);
+    if (!f) {
+      const ref = clipById.get(kind === 'rifle' ? 'rifle_aim' : 'pistol_aim')!;
+      const raw = this.solve(ref.sample(0), ref, 0, {});
+      f = this.weaponFit(raw.frame, this.socket);
+      // Handguard where this body's support arm comfortably reaches it in the aim pose
+      // (same clamp as the rifle model).
+      f.supportZ = Math.min(SUPPORT_MAX, Math.max(SUPPORT_MIN, f.supportZ));
+      if (kind === 'rifle') f.supportZ = this.reachableZ(f.rot, raw.world, raw.pos, f.supportZ, SUPPORT_MIN, 0.93);
+      this.fits.set(kind, f);
+    }
+    return f;
+  }
+
+  /** Support-hand IK target (chest space) on the rifle's handguard, from the solved weapon pose. */
+  private supportTarget(t: HandTarget, world: Q[], pos: Vec3[]): HandTarget {
+    const fit = this.fitFor('rifle');
+    const k = this.scale;
+    const sw = qmul(world[this.socket], fit.rot); // weapon frame -> world
+    const at = (p: Vec3): Vec3 => add3(pos[this.socket], qrot(sw, p));
+    // Weapon frame: +Z down the barrel, +Y up. Palm under the handguard (bottom at y ~0.036),
+    // fingers forward and wrapping up its far side.
+    const dirW = norm(qrot(sw, [-0.35, 0.2, 0.91]));
+    const palmW = norm(qrot(sw, [0, 1, 0]));
+    // If this pose puts the handguard out of reach, slide the hand back along it (it is ~30 cm long).
+    const z = this.reachableZ(fit.rot, world, pos, fit.supportZ, fit.supportZ - 0.12, 0.96);
+    const C = at([0, 0.033, z]);
+    const wrist: Vec3 = [0, 1, 2].map((d) => C[d] - dirW[d] * 0.05 * k - palmW[d] * 0.02 * k) as Vec3;
+    const { cd, origin } = this.chestSpace(world, pos);
+    const inv = qconj(cd);
+    return { ...t, pos: qrot(inv, sub3(wrist, origin)).map((x) => x / k) as Vec3, dir: qrot(inv, dirW), palm: qrot(inv, palmW) };
+  }
+
+  /**
+   * Largest distance down the barrel (<= zMax, >= zMin) at which the support hand's wrist
+   * is within `margin` of the left arm's full reach.
+   */
+  private reachableZ(fitRot: Q, world: Q[], pos: Vec3[], zMax: number, zMin: number, margin: number): number {
     const B = this.rig.bones;
-    const s = clip.sample(time);
+    const arm = this.idx.get('LeftArm'), fore = this.idx.get('LeftForeArm'), hand = this.idx.get('LeftHand');
+    if (arm === undefined || fore === undefined || hand === undefined) return zMax;
+    const reach = (dist(B[fore].head, B[arm].head) + dist(B[hand].head, B[fore].head)) * margin;
+    const k = this.scale;
+    const sw = qmul(world[this.socket], fitRot);
+    const dirW = norm(qrot(sw, [-0.35, 0.2, 0.91])), palmW = norm(qrot(sw, [0, 1, 0]));
+    for (let z = zMax; z > zMin; z -= 0.005) {
+      const C = add3(pos[this.socket], qrot(sw, [0, 0.033, z]));
+      const w: Vec3 = [0, 1, 2].map((d) => C[d] - dirW[d] * 0.05 * k - palmW[d] * 0.02 * k) as Vec3;
+      if (dist(w, pos[arm]) <= reach) return z;
+    }
+    return zMin;
+  }
+
+  /** Chest frame (rotation from the animation rest) and the IK origin at the base of the neck. */
+  private chestSpace(world: Q[], pos: Vec3[]): { cd: Q; origin: Vec3 } {
+    const B = this.rig.bones;
+    const chest = this.idx.get('Spine2') ?? this.idx.get('Spine1') ?? 0;
+    const cd = qmul(world[chest], qconj(this.animRest[chest]));
+    const neck = this.idx.get('Neck');
+    const nOff = neck !== undefined ? qrot(qconj(this.restWorld[chest]), sub3(B[neck].head, B[chest].head)) : [0, 0, 0] as Vec3;
+    const no = qrot(world[chest], nOff);
+    return { cd, origin: [pos[chest][0] + no[0], pos[chest][1] + no[1], pos[chest][2] + no[2]] };
+  }
+
+  private solve(s: Sample, clip: Clip, time: number, opts: { rootMotion?: boolean }): { frame: Frame; world: Q[]; pos: Vec3[] } {
+    const B = this.rig.bones;
     const world: Q[] = new Array(B.length);
     const pos: Vec3[] = new Array(B.length);
     const rot: Q[] = new Array(B.length);
@@ -214,7 +298,7 @@ export class Animator {
       const shift = (r.ground ? this.restFootY - low : 0) + (r.lift ?? 0) * k;
       for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + shift, p[2]]);
     }
-    return { rot, rootPos };
+    return { frame: { rot, rootPos }, world, pos };
   }
 
   /** Fist thumb: aim the thumb across the front of the index/middle fingers. */
@@ -257,14 +341,9 @@ export class Animator {
     const t = s.ik![side];
     if (!t) return;
     const B = this.rig.bones;
-    const chest = this.idx.get('Spine2') ?? this.idx.get('Spine1') ?? 0;
-    const cd = qmul(world[chest], qconj(this.animRest[chest]));
-    const toWorld = (v: Vec3) => qrot(cd, v);
     // Origin: base of the neck (just above the shoulder line), carried by the chest bone.
-    const neck = this.idx.get('Neck');
-    const nOff = neck !== undefined ? qrot(qconj(this.restWorld[chest]), sub3(B[neck].head, B[chest].head)) : [0, 0, 0] as Vec3;
-    const no = qrot(world[chest], nOff);
-    const origin: Vec3 = [pos[chest][0] + no[0], pos[chest][1] + no[1], pos[chest][2] + no[2]];
+    const { cd, origin } = this.chestSpace(world, pos);
+    const toWorld = (v: Vec3) => qrot(cd, v);
     const fore = this.idx.get(`${side}ForeArm`)!, hand = this.idx.get(`${side}Hand`)!;
     if (part === 'Arm') {
       const S = pos[i];

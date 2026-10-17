@@ -95,7 +95,7 @@ export function buildWeapon(id: WeaponId, fit: WeaponFit = {}): WeaponPart[] {
     case 'none':
       return [];
     case 'rifle': {
-      const hz = Math.min(0.42, Math.max(0.22, fit.supportZ ?? 0.3)); // handguard centre under the support hand
+      const hz = Math.min(0.42, Math.max(0.16, fit.supportZ ?? 0.3)); // where the support hand holds the handguard (see SUPPORT_MIN/MAX)
       const rail = 0.085;
       return [
         {
