@@ -245,14 +245,14 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
     },
   },
   // FRSC marshal, No. 5b dress (FRSC dress code, 2025 compendium): beige short-sleeve shirt tucked into
-  // black trousers, beige epaulettes, service belt, black boots; maroon beret with cap badge.
+  // black trousers, service belt, black boots; maroon beret with cap badge and maroon epaulettes.
   'The FRSC Officer (Nigeria)': {
     gender: 1, age: 0.52, muscle: 0.55, weight: 0.5, height: 0.55, african: 1, asian: 0, caucasian: 0,
     hair: 'buzz', eyebrows: 'eyebrow001', outfit: 'none',
     top: 'uniform_shirt', bottom: 'uniform_trousers', shoes: 'combat_boots', accessories: ['beret', 'belt'],
     garmentStyles: {
-      uniform_shirt: { pattern: 'solid', color: '#c9b48c', color2: '#b49d72' },
-      uniform_shirt_long: { pattern: 'solid', color: '#c9b48c', color2: '#b49d72' },
+      uniform_shirt: { pattern: 'solid', color: '#c9b48c', color2: '#6a1b2a' },
+      uniform_shirt_long: { pattern: 'solid', color: '#c9b48c', color2: '#6a1b2a' },
       uniform_trousers: { pattern: 'solid', color: '#141519' },
       beret: { pattern: 'solid', color: '#6a1b2a', color2: '#d4a845' },
       belt: { pattern: 'leather', color: '#111111' },
