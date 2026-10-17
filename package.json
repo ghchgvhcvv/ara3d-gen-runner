@@ -1,8 +1,29 @@
 {
   "name": "3d-gen",
-  "private": true,
   "version": "0.1.0",
+  "description": "Open-source, self-hosted generator for realistic, rigged and animated 3D human characters. Exports GLB, FBX and OBJ.",
+  "license": "MIT",
+  "private": true,
   "type": "module",
+  "keywords": [
+    "3d",
+    "character-generator",
+    "game-development",
+    "gamedev",
+    "rigging",
+    "animation",
+    "glb",
+    "gltf",
+    "fbx",
+    "obj",
+    "makehuman",
+    "three.js",
+    "avatar",
+    "procedural"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

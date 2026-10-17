@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+      # The CC0 MakeHuman data (~420 MB) and the built assets are cached between runs.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            vendor
+            public/assets
+          key: assets-${{ runner.os }}-${{ hashFiles('scripts/build-assets.ts', 'scripts/setup-assets.sh') }}
+      - run: npm run setup-assets
+
+      - name: Generate characters and validate every export format
+        run: npm test
+      - name: Load exported GLBs in three.js (headless Chrome)
+        run: npm run test:gltf
+      - run: npm run build
