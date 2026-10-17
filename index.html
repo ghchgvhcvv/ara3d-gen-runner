@@ -23,8 +23,10 @@
     </aside>
     <main>
       <canvas id="viewport"></canvas>
-      <div id="loading">Loading character assets…</div>
+      <div id="loading"><span class="spin"></span><span id="loading-text">Loading character assets…</span></div>
+      <div id="busy-bar"></div>
       <div id="stats"></div>
+      <div id="status" aria-live="polite"><span class="spin"></span><span id="status-text"></span></div>
       <div id="view-tools">
         <label><input type="checkbox" id="wireframe" /> Wireframe</label>
         <label><input type="checkbox" id="skeleton" /> Skeleton</label>

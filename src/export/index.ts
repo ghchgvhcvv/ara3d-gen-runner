@@ -68,8 +68,21 @@ function readme(ch: Character, plan: ExportPlan): string {
 }
 
 /** Execute an export plan: one file, or a zip with exactly the planned files. */
-export async function runExport(lib: AssetLibrary, ch: Character, plan: ExportPlan, extras: { previewPng?: Uint8Array } = {}): Promise<ExportFile> {
+export interface ExportExtras {
+  previewPng?: Uint8Array;
+  /** Progress: what is happening and the fraction done (0..1). */
+  onProgress?: (label: string, frac: number) => void;
+}
+
+export async function runExport(lib: AssetLibrary, ch: Character, plan: ExportPlan, extras: ExportExtras = {}): Promise<ExportFile> {
   const stem = stemOf(ch.params.name);
+  // Progress units: one per clip to bake, one per file to write, one for the zip.
+  const clipIds = [...new Set(plan.files.flatMap((f) => f.clips))];
+  const total = clipIds.length + plan.files.length + (plan.zipped ? 1 : 0);
+  let done = 0;
+  const progress = (label: string) => extras.onProgress?.(label, Math.min(1, done++ / total));
+  progress('Loading textures');
+  done = 0;
   const textures = await loadTextures(lib, ch);
   const animator = ch.rig ? new Animator(ch.rig) : null;
   const baked = new Map<string, BakedClip>();
@@ -78,6 +91,7 @@ export async function runExport(lib: AssetLibrary, ch: Character, plan: ExportPl
       let b = baked.get(id);
       if (!b) {
         const c = clipById.get(id)!;
+        progress(`Baking ${c.name}`);
         b = { name: exportClipName(id, plan.settings), loop: c.loop, ...animator!.bake(c, 30, { rootMotion: plan.settings.rootMotion }) };
         baked.set(id, b);
       }
@@ -85,6 +99,7 @@ export async function runExport(lib: AssetLibrary, ch: Character, plan: ExportPl
     });
 
   const build = (f: PlannedFile): Uint8Array | Zippable => {
+    if (f.kind !== 'meta') progress(`Writing ${f.path.replace(/\/$/, '')}`);
     if (f.kind === 'obj') {
       const { obj, mtl } = exportOBJ(ch.mesh, stem, `${stem}.mtl`);
       const out: Zippable = { [`${stem}.obj`]: strToU8(obj), [`${stem}.mtl`]: strToU8(mtl) };
@@ -117,6 +132,7 @@ export async function runExport(lib: AssetLibrary, ch: Character, plan: ExportPl
     if (f.kind === 'obj') folder.obj = data as Zippable;
     else folder[f.path] = data instanceof Uint8Array && /\.(glb|png)$/.test(f.path) ? [data, { level: 0 }] : (data as Uint8Array);
   }
+  progress('Compressing zip');
   return { name: plan.download, data: zipSync({ [stem]: folder }, { level: 6 }), mime: 'application/zip' };
 }
 

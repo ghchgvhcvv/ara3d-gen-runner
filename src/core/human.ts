@@ -95,7 +95,13 @@ function tint(a: string, b: string): string {
   return '#' + ((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0');
 }
 
-export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Character> {
+export interface BuildOptions {
+  /** Called as the build moves through its stages (for progress UI). */
+  onStage?: (stage: string) => void;
+}
+
+export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildOptions = {}): Promise<Character> {
+  const stage = opts.onStage ?? (() => {});
   const cat = lib.catalog;
   const find = (items: CatalogItem[], id: string) => (id === 'none' ? undefined : items.find((i) => i.id === id));
   const outfit = find(cat.outfits, p.outfit);
@@ -111,12 +117,14 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
   const shoesItem = p.shoes === 'combat_boots' ? find(cat.shoes, 'shoes03') : find(cat.shoes, p.shoes);
   const pieces = dressing(p);
 
+  stage('Loading assets');
   const load = (item?: CatalogItem) => (item?.file ? lib.proxy(item.file) : Promise.resolve(undefined));
   const [pOutfit, pShoes, pHat, pHair, pBrows, pLashes, pEyes, pBody] = await Promise.all([
     load(outfit), load(shoesItem), load(hat), load(hair), load(brows), load(lashes),
     lib.proxy(low ? cat.eyeMesh.replace('high-poly', 'low-poly') : cat.eyeMesh), load(bodyLod),
   ]);
 
+  stage('Shaping body');
   const coords = applyTargets(lib, targetWeights(p, slidersOf(lib)));
   const fv = lib.base.arrays.faceVerts as Uint32Array;
   // Rigging: target skeleton and per-base-vertex weights; every part derives its weights from these.
@@ -140,6 +148,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
   };
 
   // --- Procedural garments ---
+  stage('Fitting clothes');
   const bodyNormals = vertexNormals(fullBody);
   const gparts = buildGarments(lib, coords, bodyNormals, fv, pieces);
 
@@ -162,7 +171,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
     hiddenFaces[f] = coveredFaces[f] | assetDel[fv[f * 4]] | assetDel[fv[f * 4 + 1]] | assetDel[fv[f * 4 + 2]] | assetDel[fv[f * 4 + 3]];
   const neckIdx = lib.base.meta.joints['neck01____head'];
   const neckY = neckIdx.reduce((s, v) => s + coords[v * 3 + 1], 0) / neckIdx.length;
-  const looks = buildLooks(lib, { p, coords, normals: bodyNormals, fullBody, hidden: hiddenFaces, neckY, low });
+  const looks = buildLooks(lib, { p, coords, normals: bodyNormals, fullBody, hidden: hiddenFaces, neckY, low, onStage: stage });
   // Hair and earrings follow the skull only; beards also the jaw and neck.
   const skinTo = (m: PolyMesh, mask: (v: number) => boolean): PolyMesh =>
     bskin ? { ...m, skin: skinPart(m, bskin, new VertexGrid(coords, mask), 4) } : m;
@@ -236,6 +245,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
   let rig: Rig | undefined;
   let weapon: Character['weapon'];
   if (rigged) {
+    stage('Rigging');
     const joint = (name: string): Vec3 => {
       const idx = lib.base.meta.joints[name];
       const s: Vec3 = [0, 0, 0];
@@ -294,6 +304,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams): Promise<Cha
     }
   }
 
+  stage('Assembling mesh');
   const asm = new MeshAssembler();
   for (const [m, mat] of out) asm.add(m, mat);
   return { params: p, mesh: asm.build(), rig, weapon, height: (maxBodyY - minY) * DM };

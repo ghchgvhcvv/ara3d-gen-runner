@@ -1,11 +1,12 @@
 import { AssetLibrary, fetchSource, type CatalogItem } from '../core/assets';
-import { autoSkin, buildHuman, type Character } from '../core/human';
+import { autoSkin, type Character } from '../core/human';
 import { triangleCount } from '../core/mesh';
 import { ageToYears, DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, yearsToAge, type HumanParams } from '../core/params';
 import { GARMENTS, garmentById, PATTERNS } from '../core/garments';
 import { CLIPS, clipById } from '../core/anim/clips';
 import { RIG_LABELS, type RigType } from '../core/rig/skeletons';
-import { DEFAULT_EXPORT, MODE_LABELS, planExport, runExport, type ExportSettings } from '../export';
+import { DEFAULT_EXPORT, MODE_LABELS, planExport, type ExportSettings } from '../export';
+import { Engine } from './engine';
 import { Viewer } from './viewer';
 import { WEAPONS, WEAPON_LABELS, type WeaponId } from '../core/props/weapons';
 import { EARRINGS, EARRING_LABELS, FACIAL_HAIR, FACIAL_HAIR_LABELS, HAIRSTYLES, TATTOOS, TATTOO_LABELS, isProceduralHair, type EarringId, type FacialHairId, type Metal, type TattooId } from '../core/looks';
@@ -18,7 +19,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string,
   return e;
 }
 
-const lib = await new AssetLibrary(fetchSource(`${import.meta.env.BASE_URL}assets/`)).init();
+const assetsUrl = new URL(`${import.meta.env.BASE_URL}assets/`, location.href).href;
+const lib = await new AssetLibrary(fetchSource(assetsUrl)).initCatalog();
+// Building and exporting run in a worker, so the UI and the 3D view never freeze.
+const engine = new Engine(lib, assetsUrl);
 const cat = lib.catalog;
 const viewer = new Viewer($<HTMLCanvasElement>('#viewport'), (f) => lib.textureUrl(f));
 
@@ -38,34 +42,101 @@ function loadSaved(): HumanParams | null {
 
 // --- Generation --------------------------------------------------------------
 
-let gen = 0;
-let queued = false;
+/**
+ * Busy indicator for the viewport: a status pill with the current stage and a
+ * thin progress shimmer. It only appears for work that takes a noticeable time
+ * (no flicker on quick updates) and stays up long enough to read.
+ */
+const busy = (() => {
+  const pill = $('#status'), text = $('#status-text'), bar = $('#busy-bar');
+  let showTimer = 0, shownAt = 0, active = false;
+  const show = () => {
+    shownAt = performance.now();
+    pill.classList.add('show');
+    bar.classList.add('show');
+  };
+  return {
+    start(label: string) {
+      text.textContent = label;
+      if (active) return;
+      active = true;
+      clearTimeout(showTimer);
+      if (!pill.classList.contains('show')) showTimer = window.setTimeout(show, 160);
+    },
+    stage(label: string) {
+      if (text.textContent === label) return;
+      text.textContent = label;
+      text.classList.remove('swap');
+      void text.offsetWidth; // restart the fade-in
+      text.classList.add('swap');
+    },
+    end() {
+      active = false;
+      clearTimeout(showTimer);
+      const wait = pill.classList.contains('show') ? Math.max(0, 350 - (performance.now() - shownAt)) : 0;
+      showTimer = window.setTimeout(() => {
+        if (active) return;
+        pill.classList.remove('show');
+        bar.classList.remove('show');
+      }, wait);
+    },
+  };
+})();
+
+// One build in flight at a time; changes made meanwhile are folded into the next build.
+// Each finished build is shown right away, so dragging a slider updates progressively.
+let building = false, dirty = false;
+let idleWaiters: (() => void)[] = [];
+const whenIdle = () => (building ? new Promise<void>((r) => idleWaiters.push(r)) : Promise.resolve());
 function regenerate() {
-  if (queued) return;
-  queued = true;
-  requestAnimationFrame(async () => {
-    queued = false;
-    const my = ++gen;
+  dirty = true;
+  if (!building) void pump();
+}
+async function pump() {
+  building = true;
+  busy.start('Updating…');
+  while (dirty) {
+    dirty = false;
+    const p = params;
     const t0 = performance.now();
-    const ch = await buildHuman(lib, params);
-    if (my !== gen) return; // a newer request superseded this one
+    let ch: Character;
+    try {
+      ch = await engine.build(p, (stage) => {
+        busy.stage(`${stage}…`);
+        if (!current) $('#loading-text').textContent = `${stage}…`;
+      });
+    } catch (e) {
+      console.error(e);
+      busy.stage(`Failed: ${(e as Error).message}`);
+      if (!current) $('#loading-text').textContent = `Could not build the character: ${(e as Error).message}`;
+      continue;
+    }
+    applyCharacter(ch, p, performance.now() - t0);
+  }
+  building = false;
+  busy.end();
+  idleWaiters.forEach((r) => r());
+  idleWaiters = [];
+}
+function applyCharacter(ch: Character, p: HumanParams, ms: number) {
+  {
     current = ch;
     viewer.show(ch);
     $('#loading').hidden = true;
     animBar.style.display = ch.rig ? '' : 'none';
     renderExport();
     if (ch.rig && !viewer.playing && activeClip !== 'bind') playClip(activeClip);
-    const skin = params.skin === 'auto' ? ` · skin: ${autoSkin(params, cat.skins).name}` : '';
+    const skin = p.skin === 'auto' ? ` · skin: ${autoSkin(p, cat.skins).name}` : '';
     $('#stats').textContent =
-      `${(ch.height * 100).toFixed(0)} cm · ${ageToYears(params.age).toFixed(0)} yrs · ` +
+      `${(ch.height * 100).toFixed(0)} cm · ${ageToYears(p.age).toFixed(0)} yrs · ` +
       `${triangleCount(ch.mesh).toLocaleString()} tris · ${ch.mesh.materials.length} materials · ` +
-      `${(performance.now() - t0).toFixed(0)} ms${skin}`;
+      `${ms.toFixed(0)} ms${skin}`;
     try {
-      localStorage.setItem('3dgen.human', JSON.stringify(params));
+      localStorage.setItem('3dgen.human', JSON.stringify(p));
     } catch {
       /* storage unavailable */
     }
-  });
+  }
 }
 
 function set(patch: Partial<HumanParams>) {
@@ -470,8 +541,10 @@ function renderExport() {
   if (!current) return;
   const plan = planExport(current, exportSettings);
   summaryText.textContent = plan.summary;
-  goBtn.textContent = `⬇ ${plan.download}`;
+  goBtn.dataset.label = `⬇ ${plan.download}`;
+  if (!exportState) goBtn.textContent = goBtn.dataset.label;
   goBtn.title = `Download ${plan.download}`;
+  paintExportButtons();
   if (exportPanel.hidden) return;
   const s = exportSettings;
   const h = (t: string) => el('div', { className: 'xp-h', textContent: t });
@@ -585,20 +658,46 @@ function renderExport() {
   dl.addEventListener('click', doExport);
   kids.push(dl);
   exportPanel.replaceChildren(...kids);
+  paintExportButtons();
+}
+
+/** Export progress shown on the download buttons (re-applied when the panel re-renders). */
+let exportState: { label: string; frac: number; done?: boolean; failed?: boolean } | null = null;
+function paintExportButtons() {
+  const buttons = [goBtn, ...exportPanel.querySelectorAll<HTMLButtonElement>('.xp-go')];
+  for (const b of buttons) {
+    if (exportState && !b.dataset.label) b.dataset.label = b.textContent ?? '';
+    b.classList.toggle('busy', !!exportState && !exportState.done && !exportState.failed);
+    b.classList.toggle('done', !!exportState?.done);
+    b.classList.toggle('failed', !!exportState?.failed);
+    b.disabled = !!exportState && !exportState.done && !exportState.failed;
+    b.style.setProperty('--p', `${Math.round((exportState?.frac ?? 0) * 100)}%`);
+    if (!exportState) {
+      if (b.dataset.label) b.textContent = b.dataset.label;
+      continue;
+    }
+    const icon = exportState.done ? '✓' : exportState.failed ? '!' : '';
+    b.replaceChildren(
+      icon ? el('span', { className: 'ico', textContent: icon }) : el('span', { className: 'spin' }),
+      el('span', { className: 'lbl', textContent: exportState.label }),
+    );
+  }
 }
 
 async function doExport() {
-  if (!current) return;
-  const plan = planExport(current, exportSettings);
-  const buttons = [goBtn, ...exportPanel.querySelectorAll<HTMLButtonElement>('.xp-go')];
-  const labels = buttons.map((b) => b.textContent);
-  buttons.forEach((b) => {
-    b.disabled = true;
-    b.textContent = 'Exporting…';
-  });
+  if (!current || (exportState && !exportState.done && !exportState.failed)) return;
+  exportState = { label: 'Preparing…', frac: 0 };
+  paintExportButtons();
   try {
+    await whenIdle(); // export the character as currently shown in the controls
+    const plan = planExport(current, exportSettings);
     const previewPng = plan.zipped ? await viewer.snapshot() : undefined;
-    const file = await runExport(lib, current, plan, { previewPng });
+    const file = await engine.export(exportSettings, previewPng, (label, frac) => {
+      exportState = { label: `${label}…`, frac: frac ?? exportState!.frac };
+      paintExportButtons();
+    });
+    exportState = { label: `Saved ${file.name}`, frac: 1, done: true };
+    paintExportButtons();
     const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.mime }));
     const a = el('a', { href: url, download: file.name });
     document.body.append(a);
@@ -606,13 +705,13 @@ async function doExport() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   } catch (e) {
-    alert(`Export failed: ${(e as Error).message}`);
-  } finally {
-    buttons.forEach((b, i) => {
-      b.disabled = false;
-      b.textContent = labels[i];
-    });
+    exportState = { label: `Export failed: ${(e as Error).message}`, frac: 0, failed: true };
+    paintExportButtons();
   }
+  setTimeout(() => {
+    exportState = null;
+    paintExportButtons();
+  }, exportState?.failed ? 4000 : 1800);
 }
 goBtn.addEventListener('click', doExport);
 

@@ -30,6 +30,7 @@ export interface LooksInput {
   /** Neck base height (dm): box braids stop above the shoulders. */
   neckY: number;
   low: boolean;
+  onStage?: (stage: string) => void;
 }
 
 export interface Looks {
@@ -84,6 +85,7 @@ export function buildLooks(lib: AssetLibrary, i: LooksInput): Looks {
     if (!cache) paintedFaces.set(lib, (cache = new Map()));
     let faces = cache.get(key);
     if (!faces || !lib.hasTexture(map)) {
+      i.onStage?.(tattoos.length ? 'Painting tattoos' : 'Painting skin details');
       const painted = paintOverlay(lib, layers, size);
       lib.registerTexture(map, painted.png);
       cache.set(key, (faces = painted.faces));
@@ -99,6 +101,7 @@ export function buildLooks(lib: AssetLibrary, i: LooksInput): Looks {
   }
 
   // --- Geometry ---
+  if (proc || facial !== 'none') i.onStage?.('Growing hair');
   const ctx: HeadCtx = {
     base, coords: i.coords, normals: i.normals, regions: base.regions, faceVerts: lib.base.arrays.faceVerts as Uint32Array,
     seed: p.seed, low: i.low,

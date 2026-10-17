@@ -124,6 +124,11 @@ export class AssetLibrary {
     return this.generated.get(name);
   }
 
+  /** Names of all runtime-generated textures. */
+  generatedNames(): string[] {
+    return [...this.generated.keys()];
+  }
+
   constructor(readonly source: AssetSource) {}
 
   async init(): Promise<this> {
@@ -135,6 +140,12 @@ export class AssetLibrary {
     this.catalog = JSON.parse(new TextDecoder().decode(cat));
     this.base = decodePack<BaseMeta>(base);
     this.targets = decodePack<TargetsMeta>(targets);
+    return this;
+  }
+
+  /** Catalog only (for UIs that delegate building to a worker). */
+  async initCatalog(): Promise<this> {
+    this.catalog = JSON.parse(new TextDecoder().decode(await this.source.read('catalog.json')));
     return this;
   }
 
