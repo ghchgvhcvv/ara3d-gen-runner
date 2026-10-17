@@ -167,7 +167,14 @@ function eulerXYZ(R: Mat3): [number, number, number] {
 
 const KTIME = 46186158000; // FBX time units per second
 
-export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig, clips: BakedClip[] = []): Uint8Array {
+/**
+ * `meshless`: skeleton + animation only (no geometry, materials or skin), for
+ * per-clip animation files (Unity's model@clip convention).
+ */
+export function exportFBX(
+  mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig, clips: BakedClip[] = [], opts: { meshless?: boolean } = {},
+): Uint8Array {
+  const meshless = !!opts.meshless && !!rig;
   let nextId = 1_000_000;
   const id = () => nextId++;
   const geomId = id(), modelId = id(), docId = id();
@@ -360,9 +367,11 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
         }
       }
     const poseNodes: FbxNode[] = [N('PoseNode', [], [N('Node', [L(modelId)]), N('Matrix', [Ad(mat4([1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0, 0]))])])];
-    rigObjs.push(N('Deformer', [L(skinId), S(objName(name, 'Deformer')), S('Skin')], [N('Version', [I(101)]), N('Link_DeformAcuracy', [D(50)])]));
-    rigConn.push(N('C', [S('OO'), L(skinId), L(geomId)]));
-    deformerCount = 1;
+    if (!meshless) {
+      rigObjs.push(N('Deformer', [L(skinId), S(objName(name, 'Deformer')), S('Skin')], [N('Version', [I(101)]), N('Link_DeformAcuracy', [D(50)])]));
+      rigConn.push(N('C', [S('OO'), L(skinId), L(geomId)]));
+      deformerCount = 1;
+    }
     B.forEach((b, i) => {
       const { t, R } = localTransform(B, i);
       rigObjs.push(
@@ -382,7 +391,7 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
       );
       const world = mat4(b.rot, b.head.map((x) => x * CM));
       poseNodes.push(N('PoseNode', [], [N('Node', [L(boneIds[i])]), N('Matrix', [Ad(world)])]));
-      if (idx[i].length) {
+      if (idx[i].length && !meshless) {
         const cid = id();
         const Rt = transpose(b.rot);
         const inv = mat4(Rt, mulMV(Rt, b.head.map((x) => x * CM) as [number, number, number]).map((x) => -x));
@@ -398,9 +407,10 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
         deformerCount++;
       }
     });
-    rigObjs.push(N('Pose', [L(poseId), S(objName('BindPose', 'Pose')), S('BindPose')], [
-      N('Type', [S('BindPose')]), N('Version', [I(100)]), N('NbPoseNodes', [I(poseNodes.length)]), ...poseNodes,
-    ]));
+    if (!meshless)
+      rigObjs.push(N('Pose', [L(poseId), S(objName('BindPose', 'Pose')), S('BindPose')], [
+        N('Type', [S('BindPose')]), N('Version', [I(100)]), N('NbPoseNodes', [I(poseNodes.length)]), ...poseNodes,
+      ]));
     boneCount = B.length;
     attrCount = B.length + 1;
 
@@ -512,14 +522,16 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
     N('References'),
     N('Definitions', [], [
       N('Version', [I(100)]),
-      N('Count', [I(3 + mesh.materials.length + videoCount * 2 + (boneCount ? boneCount + 1 + attrCount + deformerCount + 1 : 0) + animStacks.length * 2 + curveNodeCount + curveCount)]),
+      N('Count', [I((meshless ? 1 : 3 + mesh.materials.length + videoCount * 2) + (boneCount ? boneCount + 1 + attrCount + deformerCount + (meshless ? 0 : 1) : 0) + animStacks.length * 2 + curveNodeCount + curveCount)]),
       N('ObjectType', [S('GlobalSettings')], [N('Count', [I(1)])]),
-      N('ObjectType', [S('Model')], [N('Count', [I(1 + (boneCount ? boneCount + 1 : 0))])]),
+      N('ObjectType', [S('Model')], [N('Count', [I((meshless ? 0 : 1) + (boneCount ? boneCount + 1 : 0))])]),
       ...(boneCount
         ? [
             N('ObjectType', [S('NodeAttribute')], [N('Count', [I(attrCount)])]),
-            N('ObjectType', [S('Deformer')], [N('Count', [I(deformerCount)])]),
-            N('ObjectType', [S('Pose')], [N('Count', [I(1)])]),
+            ...(meshless ? [] : [
+              N('ObjectType', [S('Deformer')], [N('Count', [I(deformerCount)])]),
+              N('ObjectType', [S('Pose')], [N('Count', [I(1)])]),
+            ]),
           ]
         : []),
       ...(animStacks.length
@@ -530,17 +542,19 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
             N('ObjectType', [S('AnimationCurve')], [N('Count', [I(curveCount)])]),
           ]
         : []),
-      N('ObjectType', [S('Geometry')], [N('Count', [I(1)])]),
-      N('ObjectType', [S('Material')], [N('Count', [I(mesh.materials.length)])]),
-      ...(videoCount
+      ...(meshless ? [] : [
+        N('ObjectType', [S('Geometry')], [N('Count', [I(1)])]),
+        N('ObjectType', [S('Material')], [N('Count', [I(mesh.materials.length)])]),
+      ]),
+      ...(videoCount && !meshless
         ? [
             N('ObjectType', [S('Texture')], [N('Count', [I(videoCount)])]),
             N('ObjectType', [S('Video')], [N('Count', [I(videoCount)])]),
           ]
         : []),
     ]),
-    N('Objects', [], [geometry, model, ...materials, ...texObjs, ...rigObjs]),
-    N('Connections', [], [
+    N('Objects', [], meshless ? rigObjs : [geometry, model, ...materials, ...texObjs, ...rigObjs]),
+    N('Connections', [], meshless ? rigConn : [
       N('C', [S('OO'), L(modelId), L(0)]),
       N('C', [S('OO'), L(geomId), L(modelId)]),
       ...matIds.map((m) => N('C', [S('OO'), L(m), L(modelId)])),

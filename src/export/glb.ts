@@ -12,7 +12,11 @@ const UNSIGNED_INT = 5125;
 
 export const mimeOf = (file: string) => (file.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
 
-export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig, clips: BakedClip[] = []): Uint8Array {
+/** `meshless`: skeleton + animations only (per-clip animation files). */
+export function exportGLB(
+  mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig, clips: BakedClip[] = [], opts: { meshless?: boolean } = {},
+): Uint8Array {
+  const meshless = !!opts.meshless && !!rig;
   const chunks: Uint8Array[] = [];
   const bufferViews: object[] = [];
   const accessors: object[] = [];
@@ -50,65 +54,70 @@ export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Ui
     accessors.push({ bufferView: addView(bytes(data), ARRAY_BUFFER), componentType: FLOAT, count: vcount, type, ...extra });
     return accessors.length - 1;
   };
-  const POSITION = addAttr(mesh.positions, 'VEC3', { min, max });
-  const NORMAL = addAttr(mesh.normals, 'VEC3');
-  const TEXCOORD_0 = addAttr(uvs, 'VEC2');
   const skinned = !!(rig && mesh.joints && mesh.weights);
-  const attributes: Record<string, number> = { POSITION, NORMAL, TEXCOORD_0 };
-  if (skinned) {
-    accessors.push({ bufferView: addView(bytes(mesh.joints!), ARRAY_BUFFER), componentType: UNSIGNED_SHORT, count: vcount, type: 'VEC4' });
-    attributes.JOINTS_0 = accessors.length - 1;
-    attributes.WEIGHTS_0 = addAttr(mesh.weights!, 'VEC4');
+  let primitives: object[] = [];
+  const images: object[] = [];
+  let materials: object[] = [];
+  if (!meshless) {
+    const POSITION = addAttr(mesh.positions, 'VEC3', { min, max });
+    const NORMAL = addAttr(mesh.normals, 'VEC3');
+    const TEXCOORD_0 = addAttr(uvs, 'VEC2');
+    const attributes: Record<string, number> = { POSITION, NORMAL, TEXCOORD_0 };
+    if (skinned) {
+      accessors.push({ bufferView: addView(bytes(mesh.joints!), ARRAY_BUFFER), componentType: UNSIGNED_SHORT, count: vcount, type: 'VEC4' });
+      attributes.JOINTS_0 = accessors.length - 1;
+      attributes.WEIGHTS_0 = addAttr(mesh.weights!, 'VEC4');
+    }
+
+    const small = vcount < 65536;
+    primitives = mesh.groups.map((g) => {
+      const idx = small ? Uint16Array.from(g.indices) : g.indices;
+      accessors.push({
+        bufferView: addView(bytes(idx), ELEMENT_ARRAY_BUFFER),
+        componentType: small ? UNSIGNED_SHORT : UNSIGNED_INT,
+        count: g.indices.length,
+        type: 'SCALAR',
+      });
+      return { attributes, indices: accessors.length - 1, material: g.material, mode: 4 };
+    });
+
+    // Images / textures
+    const texIndex = new Map<string, number>();
+    const tex = (file?: string) => {
+      if (!file) return undefined;
+      const data = textures.get(file);
+      if (!data) return undefined;
+      let i = texIndex.get(file);
+      if (i === undefined) {
+        images.push({ name: file, mimeType: mimeOf(file), bufferView: addView(data) });
+        i = images.length - 1;
+        texIndex.set(file, i);
+      }
+      return { index: i };
+    };
+
+    materials = mesh.materials.map((m) => {
+      const base = tex(m.map);
+      const normal = tex(m.normalMap);
+      return {
+        name: m.name,
+        pbrMetallicRoughness: {
+          baseColorFactor: [...hexToRgb(m.color).map(srgbToLinear), m.opacity ?? 1],
+          metallicFactor: m.metalness,
+          roughnessFactor: m.roughness,
+          ...(base ? { baseColorTexture: base } : {}),
+        },
+        ...(normal ? { normalTexture: normal } : {}),
+        ...(m.emissive ? { emissiveFactor: hexToRgb(m.emissive).map(srgbToLinear) } : {}),
+        ...(m.alpha === 'mask' ? { alphaMode: 'MASK', alphaCutoff: 0.5 } : m.alpha === 'blend' ? { alphaMode: 'BLEND' } : {}),
+        ...(m.doubleSided ? { doubleSided: true } : {}),
+      };
+    });
+
   }
 
-  const small = vcount < 65536;
-  const primitives = mesh.groups.map((g) => {
-    const idx = small ? Uint16Array.from(g.indices) : g.indices;
-    accessors.push({
-      bufferView: addView(bytes(idx), ELEMENT_ARRAY_BUFFER),
-      componentType: small ? UNSIGNED_SHORT : UNSIGNED_INT,
-      count: g.indices.length,
-      type: 'SCALAR',
-    });
-    return { attributes, indices: accessors.length - 1, material: g.material, mode: 4 };
-  });
-
-  // Images / textures
-  const images: object[] = [];
-  const texIndex = new Map<string, number>();
-  const tex = (file?: string) => {
-    if (!file) return undefined;
-    const data = textures.get(file);
-    if (!data) return undefined;
-    let i = texIndex.get(file);
-    if (i === undefined) {
-      images.push({ name: file, mimeType: mimeOf(file), bufferView: addView(data) });
-      i = images.length - 1;
-      texIndex.set(file, i);
-    }
-    return { index: i };
-  };
-
-  const materials = mesh.materials.map((m) => {
-    const base = tex(m.map);
-    const normal = tex(m.normalMap);
-    return {
-      name: m.name,
-      pbrMetallicRoughness: {
-        baseColorFactor: [...hexToRgb(m.color).map(srgbToLinear), m.opacity ?? 1],
-        metallicFactor: m.metalness,
-        roughnessFactor: m.roughness,
-        ...(base ? { baseColorTexture: base } : {}),
-      },
-      ...(normal ? { normalTexture: normal } : {}),
-      ...(m.emissive ? { emissiveFactor: hexToRgb(m.emissive).map(srgbToLinear) } : {}),
-      ...(m.alpha === 'mask' ? { alphaMode: 'MASK', alphaCutoff: 0.5 } : m.alpha === 'blend' ? { alphaMode: 'BLEND' } : {}),
-      ...(m.doubleSided ? { doubleSided: true } : {}),
-    };
-  });
-
   // Skeleton: node 0 = mesh, node 1 = "Armature", bones from node 2.
-  const nodes: object[] = [{ name, mesh: 0, ...(skinned ? { skin: 0 } : {}) }];
+  const nodes: object[] = [meshless ? { name } : { name, mesh: 0, ...(skinned ? { skin: 0 } : {}) }];
   const sceneNodes = [0];
   let skins: object[] | undefined;
   const animations: object[] = [];
@@ -162,9 +171,8 @@ export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Ui
     nodes,
     ...(skins ? { skins } : {}),
     ...(animations.length ? { animations } : {}),
-    meshes: [{ name, primitives }],
-    materials,
-    ...(images.length
+    ...(meshless ? {} : { meshes: [{ name, primitives }], materials }),
+    ...(images.length && !meshless
       ? {
           images,
           samplers: [{ magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 }],

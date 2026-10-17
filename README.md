@@ -92,15 +92,36 @@ Characters are rigged automatically, with no markers to place. The skeleton is b
 
 GLB exports a joint hierarchy, inverse bind matrices and JOINTS_0/WEIGHTS_0. FBX exports LimbNodes, Skin/Cluster deformers and a bind pose. The ZIP adds `<name>.rig.json`, the bind pose in an engine-neutral form. The viewer can test the rig with poses (arms up, wave, squat, fist) and motions (idle, walk). `scripts/blender_rig_check.py` imports the exports into Blender and checks that posing deforms the mesh correctly.
 
+## Exporting
+
+The export bar always shows what you're about to get, for example `📦 FBX · Rigged + 3 anims`, with a Download button named after the exact file. Click the summary to open the **Export panel**:
+
+1. **What to export**
+   - **Static model:** mesh + textures.
+   - **Rigged model:** + skeleton and skin weights.
+   - **Rigged + animations:** + the clips you pick.
+2. **Skeleton:** game rig (65 bones, Mixamo names), lite (25), or full MakeHuman (163); A- or T-pose bind; optional jaw and eye bones.
+3. **Animations:** tick clips by category (▶ previews each one), then choose **One file, all clips inside** or **Zip: one file per clip**.
+   - Per-clip files follow Unity's `model@clip.fbx` convention and are skeleton-only unless "Include the mesh" is on.
+   - **Root motion** makes walk, run and strafe travel instead of playing in place.
+4. **Format:** GLB, FBX, OBJ (static only; disabled for rigged modes), or All formats (zip).
+5. **You will download:** the exact file name and every file in it, each with a description: triangles, textures, bones and pose, which clips, and skeleton-only or not. Notes explain any adjustment, for example that OBJ can't hold a rig.
+
+The plan is computed by `planExport()` (`src/export/plan.ts`) and executed by `runExport()`, so the download always matches the list. Zips also contain `params.json` (to regenerate the character), `rig.json`, a README listing the files, the licence and a preview image.
+
 ## Animation
 
 The character loads playing **Idle**, a rigged idle with relaxed arms. The animation bar at the top of the viewport plays the clips:
 
-| Clip | Type |
+| Category | Clips |
 | --- | --- |
-| Idle, Walk, Run, Walk backwards | loops, in place |
-| Fall | one-shot, backward fall to lying |
-| Turn left/right 45° and 90°, full turn 360° | one-shot, hip (root) yaw with stepping feet |
+| Idle & stance | Idle, Crouch idle (loops) |
+| Locomotion | Walk, Run, Walk backwards, Strafe left/right (loops; in place, or with root motion) |
+| Actions | Jump, Fall, Punch, Hit reaction (one-shots) |
+| Emotes | Wave, Cheer (loops) |
+| Turns | Left/right 45° and 90°, full 360° (one-shots: hip yaw with stepping feet) |
+
+Feet are grounded automatically (crouch, landing, steps), and switching clips in the viewer crossfades over 0.25 s.
 
 Clips are defined once (`src/core/anim/clips.ts`), in each bone's own frame (X = flex forward, Y = twist, Z = side), on an "animation rest" with relaxed arms and nearly straight elbows. One shared evaluator (`src/core/anim/evaluate.ts`) drives the viewer and both exporters, so one clip works on every skeleton type and on A- or T-pose binds, and the preview matches the export exactly.
 
@@ -112,6 +133,6 @@ Rig and animation options live in the export bar (the 🦴 button): skeleton typ
 
 ### Next
 
-- More clips (jump, crouch, strafe, attack, hit react, emotes), plus blending and transitions in the viewer.
-- Optional root motion (walk/run that travel forward) as an export setting.
 - Facial animation through the jaw and eye bones and MakeHuman's expression targets.
+- Two-bone IK foot locking for turns and strafes.
+- Weapon-holding and combat sets, if wanted.

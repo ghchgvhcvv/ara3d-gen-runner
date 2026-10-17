@@ -29,6 +29,9 @@ export interface BakedClip {
 
 export class Animator {
   readonly restLocal: Q[];
+  private restOffset: Vec3[];
+  private feet: number[];
+  private restFootY: number;
   private restWorld: Q[];
   private animRest: Q[];
   private names: (string | null)[];
@@ -85,6 +88,11 @@ export class Animator {
     let top = 0;
     for (const b of B) top = Math.max(top, b.head[1], b.tail[1]);
     this.scale = top / 1.8;
+    // Bone offsets from their parent, in the parent's rest frame (for forward kinematics).
+    this.restOffset = B.map((b) =>
+      b.parent < 0 ? b.head : qrot(qconj(this.restWorld[b.parent]), [b.head[0] - B[b.parent].head[0], b.head[1] - B[b.parent].head[1], b.head[2] - B[b.parent].head[2]]));
+    this.feet = B.map((_, i) => i).filter((i) => /^(Left|Right)(Foot|ToeBase|Toe_End)$/.test(this.names[i] ?? '') || /^(foot|toe\d-\d)\.[LR]$/.test(B[i].name));
+    this.restFootY = Math.min(...this.feet.map((i) => B[i].head[1]));
   }
 
   /** Bind pose (no animation). */
@@ -94,7 +102,7 @@ export class Animator {
     return { rot: [...this.restLocal], rootPos };
   }
 
-  frame(clip: Clip, time: number): Frame {
+  frame(clip: Clip, time: number, opts: { rootMotion?: boolean } = {}): Frame {
     const B = this.rig.bones;
     const s = clip.sample(time);
     const world: Q[] = new Array(B.length);
@@ -115,19 +123,35 @@ export class Animator {
       if (b.parent < 0) {
         const k = this.scale;
         const drop = (r.drop ?? 0) * (LYING_HEIGHT - b.head[1]);
-        rootPos.set(i, [b.head[0] + (r.x ?? 0) * k, b.head[1] + (r.y ?? 0) * k + drop, b.head[2] + (r.z ?? 0) * k]);
+        const tr = opts.rootMotion && clip.travel ? clip.travel.map((v) => v * time * k) : [0, 0, 0];
+        rootPos.set(i, [b.head[0] + (r.x ?? 0) * k + tr[0], b.head[1] + (r.y ?? 0) * k + drop + tr[1], b.head[2] + (r.z ?? 0) * k + tr[2]]);
       }
     });
+    if (r.ground || r.lift) {
+      // World positions by forward kinematics, then shift the root so the lowest foot rests on the floor.
+      const pos: Vec3[] = new Array(B.length);
+      B.forEach((b, i) => {
+        if (b.parent < 0) pos[i] = rootPos.get(i)!;
+        else {
+          const o = qrot(world[b.parent], this.restOffset[i]);
+          const p = pos[b.parent];
+          pos[i] = [p[0] + o[0], p[1] + o[1], p[2] + o[2]];
+        }
+      });
+      const low = this.feet.length ? Math.min(...this.feet.map((i) => pos[i][1])) : this.restFootY;
+      const shift = (r.ground ? this.restFootY - low : 0) + (r.lift ?? 0) * this.scale;
+      for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + shift, p[2]]);
+    }
     return { rot, rootPos };
   }
 
   /** Frames sampled at `fps` over the clip (inclusive end), quaternion signs kept continuous. */
-  bake(clip: Clip, fps = 30): { times: number[]; frames: Frame[] } {
+  bake(clip: Clip, fps = 30, opts: { rootMotion?: boolean } = {}): { times: number[]; frames: Frame[] } {
     const n = Math.max(2, Math.round(clip.duration * fps) + 1);
     const times: number[] = [], frames: Frame[] = [];
     for (let f = 0; f < n; f++) {
       const t = Math.min(clip.duration, f / fps);
-      const fr = this.frame(clip, clip.loop && f === n - 1 ? 0 : t);
+      const fr = this.frame(clip, t, opts);
       if (frames.length) {
         const prev = frames[frames.length - 1];
         fr.rot = fr.rot.map((q, i) => {

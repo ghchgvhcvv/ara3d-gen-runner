@@ -7,7 +7,7 @@ import { unzipSync, unzlibSync } from 'fflate';
 import { buildHuman } from '../src/core/human';
 import type { MeshData } from '../src/core/mesh';
 import { DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, type HumanParams } from '../src/core/params';
-import { exportCharacter } from '../src/export';
+import { DEFAULT_EXPORT, exportCharacter, planExport, runExport, type ExportSettings } from '../src/export';
 import { dressing, GARMENTS } from '../src/core/garments';
 import { Animator } from '../src/core/anim/evaluate';
 import { CLIPS } from '../src/core/anim/clips';
@@ -114,12 +114,53 @@ async function checkExports(ch: Awaited<ReturnType<typeof buildHuman>>, label: s
   const faces = new TextDecoder().decode(objZip[objName]).split('\n').filter((l) => l.startsWith('f ')).length;
   const polys = ch.mesh.groups.reduce((s, g) => s + g.polySizes.length, 0);
   if (faces !== polys) fail(`${label}: OBJ face count ${faces} != ${polys}`);
-  if (Object.keys(objZip).filter((n) => n.startsWith('textures/')).length !== texCount) fail(`${label}: OBJ textures missing`);
+  if (Object.keys(objZip).filter((n) => n.includes('/obj/textures/')).length !== texCount) fail(`${label}: OBJ textures missing`);
 
   const zip = unzipSync((await exportCharacter(lib, ch, 'zip')).data);
-  for (const ext of ['.glb', '.fbx', '.obj', '.mtl', '.params.json', 'LICENSE.txt'])
+  // Rigged characters leave OBJ out of "all formats" (it can't hold the rig).
+  for (const ext of ['.glb', '.fbx', ...(ch.rig ? [] : ['.obj', '.mtl']), '.params.json', 'LICENSE.txt'])
     if (!Object.keys(zip).some((n) => n.endsWith(ext))) fail(`${label}: zip missing ${ext}`);
 }
+
+// Export modes: every plan runs, and the files produced are exactly the ones planned.
+async function checkExportModes() {
+  const ch = await buildHuman(lib, { ...DEFAULT_PARAMS, ...PRESETS['The African Warrior'] });
+  const combos: [string, Partial<ExportSettings>][] = [];
+  for (const format of ['glb', 'fbx', 'obj', 'all'] as const) combos.push([`static ${format}`, { mode: 'static', format }]);
+  for (const format of ['glb', 'fbx', 'all'] as const) combos.push([`rigged ${format}`, { mode: 'rigged', format }]);
+  for (const format of ['glb', 'fbx', 'all'] as const)
+    for (const packaging of ['embedded', 'separate'] as const)
+      for (const clipMesh of [false, true])
+        combos.push([`animated ${format} ${packaging}${clipMesh ? ' +mesh' : ''}`, { mode: 'animated', format, packaging, clipMesh, clips: ['walk', 'jump', 'turn_left_90'], rootMotion: true }]);
+  combos.push(['animated no clips', { mode: 'animated', format: 'fbx', clips: [] }]);
+  combos.push(['obj while rigged', { mode: 'animated', format: 'obj' }]);
+  for (const [label, patch] of combos) {
+    const plan = planExport(ch, { ...DEFAULT_EXPORT, ...patch });
+    const file = await runExport(lib, ch, plan, { previewPng: new Uint8Array([137, 80, 78, 71]) });
+    if (file.name !== plan.download) fail(`export ${label}: name ${file.name} != ${plan.download}`);
+    const entries: Record<string, Uint8Array> = plan.zipped ? unzipSync(file.data) : { [plan.files[0].path]: file.data };
+    for (const f of plan.files) {
+      const key = plan.zipped ? Object.keys(entries).find((k) => k.endsWith('/' + f.path) || (f.kind === 'obj' && k.includes('/obj/'))) : f.path;
+      if (!key) { fail(`export ${label}: missing ${f.path}`); continue; }
+      const data = entries[key];
+      if (f.format === 'fbx') {
+        const c = parseFbx(data, `${label}:${f.path}`);
+        if ((c.get('AnimationStack') ?? 0) !== f.clips.length) fail(`export ${label}: ${f.path} has ${c.get('AnimationStack') ?? 0} stacks, planned ${f.clips.length}`);
+        if (f.meshless === !!c.get('Geometry')) fail(`export ${label}: ${f.path} geometry presence wrong`);
+        if (f.rigged !== !!c.get('NodeAttribute')) fail(`export ${label}: ${f.path} rig presence wrong`);
+      }
+      if (f.format === 'glb') {
+        const dv = new DataView(data.buffer, data.byteOffset);
+        const j = JSON.parse(new TextDecoder().decode(data.subarray(20, 20 + dv.getUint32(12, true))));
+        if ((j.animations?.length ?? 0) !== f.clips.length) fail(`export ${label}: ${f.path} animations ${j.animations?.length ?? 0}, planned ${f.clips.length}`);
+        if (f.meshless === !!j.meshes) fail(`export ${label}: ${f.path} mesh presence wrong`);
+        if (f.rigged && !j.skins) fail(`export ${label}: ${f.path} missing skin (armature)`);
+      }
+    }
+  }
+  console.log(`${combos.length} export modes checked`);
+}
+await checkExportModes();
 
 const t0 = performance.now();
 const cases: [string, HumanParams][] = [];

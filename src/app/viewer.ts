@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Character } from '../core/human';
-import { Animator } from '../core/anim/evaluate';
+import { Animator, type Frame } from '../core/anim/evaluate';
 import type { Clip } from '../core/anim/clips';
 import { localTransform, quatOf } from '../core/rig/rig';
 
@@ -19,6 +19,11 @@ export class Viewer {
   private clip: Clip | null = null;
   private clipStart = 0;
   speed = 1;
+  /** Preview root motion (travel) for locomotion clips. */
+  rootMotion = false;
+  private lastFrame: Frame | null = null;
+  private blendFrom: Frame | null = null;
+  private blendStart = 0;
   /** Called with (clip, time) every frame while a clip plays (for the timeline UI). */
   onTick?: (clip: Clip | null, t: number) => void;
   private loader = new THREE.TextureLoader();
@@ -217,12 +222,39 @@ export class Viewer {
     if (!this.animator) return;
     const now = performance.now() / 1000;
     let t = 0;
-    let frame;
+    let frame: Frame;
     if (this.clip) {
       const el = (now - this.clipStart) * this.speed;
       t = this.clip.loop ? el % this.clip.duration : Math.min(el, this.clip.duration);
-      frame = this.animator.frame(this.clip, t);
+      frame = this.animator.frame(this.clip, t, { rootMotion: this.rootMotion });
     } else frame = this.animator.bind();
+    // Crossfade from the previous clip over 0.25 s.
+    if (this.blendFrom) {
+      const w = Math.min(1, (now - this.blendStart) / 0.25);
+      if (w >= 1 || this.blendFrom.rot.length !== frame.rot.length) this.blendFrom = null;
+      else {
+        const from = this.blendFrom;
+        const qa = new THREE.Quaternion(), qb = new THREE.Quaternion();
+        frame = {
+          rot: frame.rot.map((q, i) => {
+            qa.set(...from.rot[i]);
+            qb.set(...q);
+            qa.slerp(qb, w);
+            return [qa.x, qa.y, qa.z, qa.w];
+          }),
+          rootPos: new Map([...frame.rootPos].map(([i, p]) => {
+            const f = from.rootPos.get(i) ?? p;
+            return [i, [f[0] + (p[0] - f[0]) * w, f[1] + (p[1] - f[1]) * w, f[2] + (p[2] - f[2]) * w]];
+          })),
+        };
+      }
+    }
+    this.lastFrame = frame;
+    // Follow travelling characters with the camera target.
+    if (this.rootMotion && this.clip?.travel) {
+      const rp = [...frame.rootPos.values()][0];
+      if (rp) this.controls.target.set(rp[0], this.controls.target.y, rp[2]);
+    }
     frame.rot.forEach((q, i) => this.bones[i].quaternion.set(q[0], q[1], q[2], q[3]));
     for (const [i, p] of frame.rootPos) this.bones[i].position.set(p[0], p[1], p[2]);
     this.onTick?.(this.clip, t);
@@ -230,6 +262,10 @@ export class Viewer {
 
   /** Play a clip (null = bind pose). One-shot clips hold their last frame. */
   play(clip: Clip | null) {
+    if (this.lastFrame) {
+      this.blendFrom = this.lastFrame;
+      this.blendStart = performance.now() / 1000;
+    }
     this.clip = clip;
     this.clipStart = performance.now() / 1000;
     this.tick();

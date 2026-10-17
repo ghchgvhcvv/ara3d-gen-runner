@@ -5,7 +5,7 @@ import { ageToYears, DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, yearsToAge,
 import { GARMENTS, garmentById, PATTERNS } from '../core/garments';
 import { CLIPS, clipById } from '../core/anim/clips';
 import { RIG_LABELS, type RigType } from '../core/rig/skeletons';
-import { exportCharacter, type ExportFormat } from '../export';
+import { DEFAULT_EXPORT, MODE_LABELS, planExport, runExport, type ExportSettings } from '../export';
 import { Viewer } from './viewer';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -22,6 +22,7 @@ const viewer = new Viewer($<HTMLCanvasElement>('#viewport'), (f) => lib.textureU
 
 let params: HumanParams = loadSaved() ?? { ...DEFAULT_PARAMS, name: 'Athletic man' };
 let current: Character | undefined;
+const exportSettings: ExportSettings = loadExportSettings();
 const sync: (() => void)[] = [];
 
 function loadSaved(): HumanParams | null {
@@ -49,11 +50,8 @@ function regenerate() {
     current = ch;
     viewer.show(ch);
     $('#loading').hidden = true;
-    rigStatus.textContent = ch.rig
-      ? `✓ Auto-rigged: ${ch.rig.bones.length} bones · ${ch.rig.restPose}-pose bind · 4 influences per vertex`
-      : 'Rig off: static mesh export.';
     animBar.style.display = ch.rig ? '' : 'none';
-    syncRigBtn();
+    renderExport();
     if (ch.rig && !viewer.playing && activeClip !== 'bind') playClip(activeClip);
     const skin = params.skin === 'auto' ? ` · skin: ${autoSkin(params, cat.skins).name}` : '';
     $('#stats').textContent =
@@ -286,41 +284,7 @@ for (const d of DETAILS) detail.append(new Option({ low: 'Low (game LOD, ~5k tri
 detail.addEventListener('change', () => set({ detail: detail.value as HumanParams['detail'] }));
 sync.push(() => (detail.value = params.detail));
 detail.value = params.detail;
-// --- Rig options (in the export bar) & animation bar ------------------------------------
-
-const rigBtn = $<HTMLButtonElement>('#rig-btn');
-const rigPop = $('#rig-pop');
-const rigStatus = el('div', { className: 'rig-status' });
-rigPop.append(
-  el('div', { className: 'sub', textContent: 'Rig & animation (GLB / FBX)' }),
-  selectRow('Skeleton', (Object.keys(RIG_LABELS) as RigType[]).map((k) => [k, RIG_LABELS[k]]), () => params.rig, (v) => set({ rig: v as RigType })),
-  selectRow('Rest pose', [['A', 'A-pose (natural)'], ['T', 'T-pose (Mixamo / Unity Humanoid)']], () => params.restPose, (v) => set({ restPose: v as 'A' | 'T' })),
-  checkRow('Facial bones (jaw + eyes)', () => params.faceBones, (v) => set({ faceBones: v })),
-  checkRow(`Include ${CLIPS.length} animations`, () => params.animations, (v) => set({ animations: v })),
-  el('div', { className: 'hint', textContent: `Clips: ${CLIPS.map((c) => c.name).join(', ')}. Loops are in place; turns rotate the hips (root). OBJ is always static.` }),
-  rigStatus,
-);
-rigBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  rigPop.hidden = !rigPop.hidden;
-});
-document.addEventListener('click', (e) => {
-  if (!rigPop.hidden && !rigPop.contains(e.target as Node) && e.target !== rigBtn) rigPop.hidden = true;
-});
-const syncRigBtn = () => {
-  rigBtn.textContent = params.rig === 'none'
-    ? '🦴 Rig: off ▾'
-    : `🦴 ${params.rig === 'full' ? 'Full' : params.rig === 'game_lite' ? 'Lite' : 'Game'} rig · ${params.restPose}-pose${params.animations ? ` · ${CLIPS.length} anims` : ''} ▾`;
-};
-sync.push(syncRigBtn);
-
-function checkRow(label: string, get: () => boolean, put: (v: boolean) => void) {
-  const box = el('input', { type: 'checkbox' });
-  box.addEventListener('change', () => put(box.checked));
-  sync.push(() => (box.checked = get()));
-  box.checked = get();
-  return el('label', { className: 'acc' }, box, label);
-}
+// --- Animation bar ----------------------------------------------------------------------
 
 // Animation bar: Idle plays by default ("rigged idle").
 const animBar = $('#anim-bar');
@@ -331,20 +295,35 @@ const playClip = (id: string) => {
   activeClip = id;
   viewer.play(id === 'bind' ? null : clipById.get(id) ?? null);
   animButtons.forEach((b, k) => b.classList.toggle('on', k === id));
+  more.value = QUICK.includes(id) ? '' : id;
+  more.classList.toggle('on', !QUICK.includes(id));
 };
-for (const [id, label] of [['bind', 'Bind pose'], ...CLIPS.map((c) => [c.id, c.name] as [string, string])] as [string, string][]) {
-  const short = label.replace('Turn left ', '↺ L ').replace('Turn right ', '↻ R ').replace('Full turn 360°', '⟳ 360°').replace('Walk backwards', 'Walk back');
-  const b = el('button', { textContent: short });
-  b.title = label;
+// Quick buttons for the most common clips, everything else in a grouped dropdown.
+const QUICK = ['bind', 'idle', 'walk', 'run'];
+for (const id of QUICK) {
+  const b = el('button', { textContent: id === 'bind' ? 'Bind pose' : clipById.get(id)!.name });
   b.addEventListener('click', () => playClip(id));
   animButtons.set(id, b);
   animBar.append(b);
 }
+const more = el('select', { title: 'All animations' });
+more.append(new Option('More animations…', ''));
+for (const cat of [...new Set(CLIPS.map((c) => c.category))]) {
+  const g = el('optgroup', { label: cat });
+  for (const c of CLIPS.filter((x) => x.category === cat && !QUICK.includes(x.id))) g.append(new Option(c.name, c.id));
+  more.append(g);
+}
+more.addEventListener('change', () => more.value && playClip(more.value));
+animBar.append(more);
+const rmBox = el('input', { type: 'checkbox' });
+rmBox.addEventListener('change', () => setExport({ rootMotion: rmBox.checked }));
+viewer.rootMotion = exportSettings.rootMotion;
+const rmLabel = el('label', { className: 'acc rm', title: 'Locomotion clips travel forward / sideways (also used for export)' }, rmBox, 'Root motion');
 const speed = el('select', { title: 'Playback speed' });
 for (const s of ['0.25', '0.5', '1', '1.5']) speed.append(new Option(`${s}×`, s));
 speed.value = '1';
 speed.addEventListener('change', () => (viewer.speed = Number(speed.value)));
-animBar.append(speed, progress);
+animBar.append(rmLabel, speed, progress);
 viewer.onTick = (clip, t) => {
   (progress.firstChild as HTMLElement).style.width = clip ? `${(t / clip.duration) * 100}%` : '0%';
 };
@@ -377,31 +356,175 @@ $<HTMLInputElement>('#face').addEventListener('change', (e) => viewer.focusFace(
 
 // --- Export ------------------------------------------------------------------
 
-document.querySelectorAll<HTMLButtonElement>('#export button').forEach((btn) =>
-  btn.addEventListener('click', async () => {
-    if (!current) return;
-    const all = document.querySelectorAll<HTMLButtonElement>('#export button');
-    all.forEach((b) => (b.disabled = true));
-    const label = btn.textContent;
-    btn.textContent = 'Exporting…';
-    try {
-      const format = btn.dataset.format as ExportFormat;
-      const previewPng = format === 'zip' ? await viewer.snapshot() : undefined;
-      const file = await exportCharacter(lib, current, format, { previewPng });
-      const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.mime }));
-      const a = el('a', { href: url, download: file.name });
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } catch (e) {
-      alert(`Export failed: ${(e as Error).message}`);
-    } finally {
-      btn.textContent = label;
-      all.forEach((b) => (b.disabled = false));
+function loadExportSettings(): ExportSettings {
+  try {
+    return { ...DEFAULT_EXPORT, ...JSON.parse(localStorage.getItem('3dgen.export') ?? '{}') };
+  } catch {
+    return { ...DEFAULT_EXPORT };
+  }
+}
+function saveExportSettings() {
+  try {
+    localStorage.setItem('3dgen.export', JSON.stringify(exportSettings));
+  } catch {
+    /* storage unavailable */
+  }
+}
+function setExport(patch: Partial<ExportSettings>) {
+  Object.assign(exportSettings, patch);
+  saveExportSettings();
+  viewer.rootMotion = exportSettings.rootMotion;
+  // Rigged modes need a skeleton.
+  if (exportSettings.mode !== 'static' && params.rig === 'none') set({ rig: 'game' });
+  renderExport();
+}
+
+const exportPanel = $('#export-panel');
+const summaryText = $('#export-summary-text');
+const goBtn = $<HTMLButtonElement>('#export-go');
+$('#export-summary').addEventListener('click', () => {
+  exportPanel.hidden = !exportPanel.hidden;
+  renderExport();
+});
+
+/** Rebuild the export panel and the export-bar summary from the current plan. */
+function renderExport() {
+  rmBox.checked = exportSettings.rootMotion;
+  if (!current) return;
+  const plan = planExport(current, exportSettings);
+  summaryText.textContent = plan.summary;
+  goBtn.textContent = `⬇ ${plan.download}`;
+  goBtn.title = `Download ${plan.download}`;
+  if (exportPanel.hidden) return;
+  const s = exportSettings;
+  const h = (t: string) => el('div', { className: 'xp-h', textContent: t });
+  const radio = <T extends string>(value: T, current: T, label: string, on: (v: T) => void, extra: Record<string, unknown> = {}) => {
+    const b = el('button', { className: 'seg' + (value === current ? ' on' : ''), textContent: label, ...extra });
+    b.addEventListener('click', () => on(value));
+    return b;
+  };
+  const check = (label: string, val: boolean, on: (v: boolean) => void) => {
+    const box = el('input', { type: 'checkbox', checked: val });
+    box.addEventListener('change', () => on(box.checked));
+    return el('label', { className: 'acc' }, box, label);
+  };
+  const select = (opts: [string, string][], val: string, on: (v: string) => void) => {
+    const sel = el('select');
+    for (const [v, l] of opts) sel.append(new Option(l, v));
+    sel.value = val;
+    sel.addEventListener('change', () => on(sel.value));
+    return sel;
+  };
+
+  const kids: Node[] = [];
+  const close = el('button', { className: 'xp-close', textContent: '✕', title: 'Close' });
+  close.addEventListener('click', () => {
+    exportPanel.hidden = true;
+  });
+  kids.push(el('div', { className: 'xp-title' }, el('span', { textContent: 'Export' }), close));
+
+  // 1. Mode
+  kids.push(h('1 · What to export'));
+  const cards = el('div', { className: 'xp-cards' });
+  for (const m of ['static', 'rigged', 'animated'] as const) {
+    const c = el('button', { className: 'xp-card' + (plan.settings.mode === m ? ' on' : '') },
+      el('b', { textContent: MODE_LABELS[m].title }), el('span', { textContent: MODE_LABELS[m].blurb }));
+    c.addEventListener('click', () => setExport({ mode: m }));
+    cards.append(c);
+  }
+  kids.push(cards);
+
+  // 2. Rig
+  if (s.mode !== 'static') {
+    kids.push(h('2 · Skeleton'));
+    kids.push(el('div', { className: 'ctl wide' }, el('span', { textContent: 'Skeleton' }),
+      select((['game', 'game_lite', 'full'] as RigType[]).map((k) => [k, RIG_LABELS[k]]), params.rig === 'none' ? 'game' : params.rig, (v) => set({ rig: v as RigType }))));
+    kids.push(el('div', { className: 'ctl wide' }, el('span', { textContent: 'Rest pose' }),
+      select([['A', 'A-pose (natural)'], ['T', 'T-pose (Mixamo / Unity Humanoid)']], params.restPose, (v) => set({ restPose: v as 'A' | 'T' }))));
+    kids.push(check('Facial bones (jaw + eyes)', params.faceBones, (v) => set({ faceBones: v })));
+    if (current.rig) kids.push(el('div', { className: 'rig-status', textContent: `✓ Auto-rigged: ${current.rig.bones.length} bones · ${current.rig.restPose}-pose bind · 4 weights per vertex` }));
+  }
+
+  // 3. Animations
+  if (s.mode === 'animated') {
+    kids.push(h('3 · Animations'));
+    const allBtn = el('button', { className: 'mini', textContent: 'All' });
+    allBtn.addEventListener('click', () => setExport({ clips: CLIPS.map((c) => c.id) }));
+    const noneBtn = el('button', { className: 'mini', textContent: 'None' });
+    noneBtn.addEventListener('click', () => setExport({ clips: [] }));
+    kids.push(el('div', { className: 'xp-row' }, el('span', { className: 'hint', textContent: `${s.clips.length} of ${CLIPS.length} selected` }), allBtn, noneBtn));
+    const cats = [...new Set(CLIPS.map((c) => c.category))];
+    for (const cat of cats) {
+      const grid = el('div', { className: 'xp-clips' });
+      for (const c of CLIPS.filter((x) => x.category === cat)) {
+        const on = s.clips.includes(c.id);
+        const box = el('input', { type: 'checkbox', checked: on });
+        box.addEventListener('change', () => setExport({ clips: on ? s.clips.filter((x) => x !== c.id) : [...s.clips, c.id] }));
+        const play = el('button', { className: 'mini', textContent: '▶', title: `Preview ${c.name}` });
+        play.addEventListener('click', () => playClip(c.id));
+        grid.append(el('label', { className: 'xp-clip' }, box, el('span', { textContent: c.name }), el('small', { textContent: `${c.duration.toFixed(1)}s ${c.loop ? '↻' : ''}` }), play));
+      }
+      kids.push(el('div', { className: 'xp-cat', textContent: cat }), grid);
     }
-  }),
-);
+    kids.push(el('div', { className: 'xp-row' },
+      radio('embedded', s.packaging, 'One file, all clips inside', (v) => setExport({ packaging: v })),
+      radio('separate', s.packaging, 'Zip: one file per clip', (v) => setExport({ packaging: v }))));
+    if (s.packaging === 'separate') kids.push(check('Include the mesh in every clip file (bigger; off = skeleton + animation only)', s.clipMesh, (v) => setExport({ clipMesh: v })));
+    kids.push(check('Root motion (walk / run / strafe travel instead of playing in place)', s.rootMotion, (v) => setExport({ rootMotion: v })));
+  }
+
+  // 4. Format
+  kids.push(h(`${s.mode === 'static' ? '2' : s.mode === 'rigged' ? '3' : '4'} · Format`));
+  kids.push(el('div', { className: 'xp-row' },
+    radio('glb', s.format, 'GLB', (v) => setExport({ format: v }), { title: 'glTF binary: web, Godot, Blender, three.js' }),
+    radio('fbx', s.format, 'FBX', (v) => setExport({ format: v }), { title: 'Unity, Unreal, Maya, 3ds Max, Blender' }),
+    radio('obj', s.format, 'OBJ', (v) => setExport({ format: v }), {
+      title: s.mode === 'static' ? 'Wavefront OBJ + textures (static)' : 'OBJ cannot store a rig or animations',
+      disabled: s.mode !== 'static',
+    }),
+    radio('all', s.format, 'All formats', (v) => setExport({ format: v }), { title: 'Every format in one zip' })));
+
+  // Summary of exactly what will be downloaded
+  kids.push(h('You will download'));
+  const list = el('ul', { className: 'xp-files' });
+  for (const f of plan.files)
+    list.append(el('li', { className: f.kind === 'meta' ? 'meta' : '' }, el('code', { textContent: f.path }), el('span', { textContent: f.desc })));
+  kids.push(el('div', { className: 'xp-download' }, el('b', { textContent: plan.download }), el('span', { className: 'hint', textContent: plan.zipped ? `zip with ${plan.files.length} items` : 'single file' })), list);
+  for (const n of plan.notes) kids.push(el('div', { className: 'xp-note', textContent: `ⓘ ${n}` }));
+  const dl = el('button', { className: 'primary xp-go', textContent: `⬇ Download ${plan.download}` });
+  dl.addEventListener('click', doExport);
+  kids.push(dl);
+  exportPanel.replaceChildren(...kids);
+}
+
+async function doExport() {
+  if (!current) return;
+  const plan = planExport(current, exportSettings);
+  const buttons = [goBtn, ...exportPanel.querySelectorAll<HTMLButtonElement>('.xp-go')];
+  const labels = buttons.map((b) => b.textContent);
+  buttons.forEach((b) => {
+    b.disabled = true;
+    b.textContent = 'Exporting…';
+  });
+  try {
+    const previewPng = plan.zipped ? await viewer.snapshot() : undefined;
+    const file = await runExport(lib, current, plan, { previewPng });
+    const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.mime }));
+    const a = el('a', { href: url, download: file.name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (e) {
+    alert(`Export failed: ${(e as Error).message}`);
+  } finally {
+    buttons.forEach((b, i) => {
+      b.disabled = false;
+      b.textContent = labels[i];
+    });
+  }
+}
+goBtn.addEventListener('click', doExport);
 
 // URL options: #preset=<name>&face
 const hash = new URLSearchParams(location.hash.slice(1));
@@ -415,6 +538,7 @@ if (hash.has('skeleton')) {
   $<HTMLInputElement>('#skeleton').checked = true;
   viewer.setSkeleton(true);
 }
+if (hash.has('export')) exportPanel.hidden = false;
 if (hash.has('face')) {
   $<HTMLInputElement>('#face').checked = true;
   viewer.focusFace(true);

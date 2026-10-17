@@ -31,14 +31,10 @@
         <label><input type="checkbox" id="face" /> Face close-up</label>
       </div>
       <div id="anim-bar"></div>
-      <div id="rig-pop" hidden></div>
+      <div id="export-panel" hidden></div>
       <div id="export">
-        <button id="rig-btn" title="Rig and animation options for GLB / FBX"></button>
-        <span>Export</span>
-        <button data-format="glb">GLB</button>
-        <button data-format="fbx">FBX</button>
-        <button data-format="obj" title="OBJ + MTL + textures (static, no rig)">OBJ</button>
-        <button data-format="zip" class="primary">ZIP (all)</button>
+        <button id="export-summary" title="Choose what to export">📦 <span id="export-summary-text">Export</span> ▾</button>
+        <button id="export-go" class="primary">⬇ Download</button>
       </div>
     </main>
     <script type="module" src="/src/app/main.ts"></script>
