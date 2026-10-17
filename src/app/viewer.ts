@@ -195,9 +195,9 @@ export class Viewer {
       this.camera.position.set(0.22, h * 0.95, 0.7);
     } else {
       // Full body with a little headroom for jumps and raised weapons.
-      const dist = h * 1.7 + 0.35;
-      this.controls.target.set(0, h * 0.52, 0);
-      this.camera.position.set(dist * 0.33, h * 0.64, dist);
+      const dist = h * 2.45 + 0.5;
+      this.controls.target.set(0, h * 0.5, 0);
+      this.camera.position.set(dist * 0.33, h * 0.6, dist);
     }
   }
 

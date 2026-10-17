@@ -9,7 +9,7 @@ Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 3
 <p align="center"><img src="docs/media/demo.gif" alt="Tattoos, recolouring, animations and weapons in the 3D Gen web app" width="560"></p>
 
 <!-- Replace DEMO_VIDEO_URL with the video's link (e.g. attach 3d-gen-demo.mp4 to a GitHub release, or drag it into this README on GitHub). -->
-> 🎬 **[Watch the 95-second demo](DEMO_VIDEO_URL)**: presets, sliders, hair and tattoos, animations, weapons and export.
+> 🎬 **[Watch the 97-second demo](DEMO_VIDEO_URL)**: presets, sliders, hair and tattoos, animations, weapons and export.
 
 ## Why self-hosted?
 
