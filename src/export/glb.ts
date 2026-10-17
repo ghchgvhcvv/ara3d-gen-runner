@@ -1,6 +1,7 @@
 /** Binary glTF 2.0 (.glb) writer with embedded textures. One primitive per material. */
 import type { MeshData } from '../core/mesh';
 import { localTransform, quatOf, transpose, mulMV, type Rig } from '../core/rig/rig';
+import type { BakedClip } from '../core/anim/evaluate';
 import { hexToRgb, srgbToLinear } from '../core/math';
 
 const ARRAY_BUFFER = 34962;
@@ -11,7 +12,7 @@ const UNSIGNED_INT = 5125;
 
 export const mimeOf = (file: string) => (file.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
 
-export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig): Uint8Array {
+export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig, clips: BakedClip[] = []): Uint8Array {
   const chunks: Uint8Array[] = [];
   const bufferViews: object[] = [];
   const accessors: object[] = [];
@@ -110,6 +111,7 @@ export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Ui
   const nodes: object[] = [{ name, mesh: 0, ...(skinned ? { skin: 0 } : {}) }];
   const sceneNodes = [0];
   let skins: object[] | undefined;
+  const animations: object[] = [];
   if (skinned && rig) {
     const B = rig.bones;
     const first = 2;
@@ -129,6 +131,29 @@ export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Ui
     });
     accessors.push({ bufferView: addView(bytes(ibm)), componentType: FLOAT, count: B.length, type: 'MAT4' });
     skins = [{ name: 'Armature', joints: B.map((_, i) => first + i), inverseBindMatrices: accessors.length - 1, skeleton: roots[0] }];
+
+    // Animations: one glTF animation per clip, rotation channels per bone + root translation.
+    for (const c of clips) {
+      const times = Float32Array.from(c.times);
+      accessors.push({ bufferView: addView(bytes(times)), componentType: FLOAT, count: times.length, type: 'SCALAR', min: [times[0]], max: [times[times.length - 1]] });
+      const input = accessors.length - 1;
+      const samplers: object[] = [], channels: object[] = [];
+      B.forEach((_, i) => {
+        const q = new Float32Array(c.frames.length * 4);
+        c.frames.forEach((f, k) => q.set(f.rot[i], k * 4));
+        accessors.push({ bufferView: addView(bytes(q)), componentType: FLOAT, count: c.frames.length, type: 'VEC4' });
+        samplers.push({ input, output: accessors.length - 1, interpolation: 'LINEAR' });
+        channels.push({ sampler: samplers.length - 1, target: { node: first + i, path: 'rotation' } });
+        if (B[i].parent < 0) {
+          const t = new Float32Array(c.frames.length * 3);
+          c.frames.forEach((f, k) => t.set(f.rootPos.get(i)!, k * 3));
+          accessors.push({ bufferView: addView(bytes(t)), componentType: FLOAT, count: c.frames.length, type: 'VEC3' });
+          samplers.push({ input, output: accessors.length - 1, interpolation: 'LINEAR' });
+          channels.push({ sampler: samplers.length - 1, target: { node: first + i, path: 'translation' } });
+        }
+      });
+      animations.push({ name: c.name, samplers, channels });
+    }
   }
   const json = {
     asset: { version: '2.0', generator: '3d-gen character generator' },
@@ -136,6 +161,7 @@ export function exportGLB(mesh: MeshData, name: string, textures: Map<string, Ui
     scenes: [{ name: 'Scene', nodes: sceneNodes }],
     nodes,
     ...(skins ? { skins } : {}),
+    ...(animations.length ? { animations } : {}),
     meshes: [{ name, primitives }],
     materials,
     ...(images.length

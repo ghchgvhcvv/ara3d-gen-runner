@@ -95,3 +95,22 @@ label.acc { flex-direction: row; align-items: center; gap: 8px; color: var(--tex
 .pose-buttons button { padding: 5px 9px; font-size: 12px; }
 .pose-buttons button.on { border-color: var(--accent); color: #fff; }
 .rig-status { color: #7fd38b; font-size: 12px; }
+#anim-bar {
+  position: absolute; top: 44px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px);
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; align-items: center;
+  background: rgba(30, 33, 40, 0.85); border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px;
+}
+#anim-bar button { padding: 4px 8px; font-size: 12px; }
+#anim-bar button.on { border-color: var(--accent); color: #fff; background: #2f3a55; }
+#anim-bar select { width: auto; padding: 3px 4px; font-size: 12px; }
+.anim-progress { flex-basis: 100%; height: 3px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
+.anim-progress > div { height: 100%; width: 0; background: var(--accent); }
+#rig-pop {
+  position: absolute; bottom: 74px; left: 50%; transform: translateX(-50%); width: 380px; max-width: calc(100% - 24px); z-index: 6;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 12px; display: grid; gap: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+#rig-pop[hidden] { display: none; }
+#rig-btn { background: #2f3a55; }
+#export { white-space: nowrap; }
+#export button { white-space: nowrap; }

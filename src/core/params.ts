@@ -56,6 +56,8 @@ export interface HumanParams {
   faceBones: boolean;
   /** Bind pose: MakeHuman's natural A-pose, or a T-pose (Mixamo / Unity Humanoid style). */
   restPose: 'A' | 'T';
+  /** Include the animation clips in GLB / FBX exports. */
+  animations: boolean;
 }
 
 export const DEFAULT_PARAMS: HumanParams = {
@@ -93,6 +95,7 @@ export const DEFAULT_PARAMS: HumanParams = {
   rig: 'game',
   faceBones: false,
   restPose: 'A',
+  animations: true,
 };
 
 /** MakeHuman age value <-> years. */
@@ -158,11 +161,17 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
     modifiers: { 'chin/chin-prominent': 0.3, 'head/head-square': 0.3 },
   },
   'The African Warrior': {
-    gender: 1, age: 0.55, muscle: 1, weight: 0.72, height: 0.55, proportions: 1, african: 1, asian: 0, caucasian: 0,
+    gender: 1, age: 0.55, muscle: 1, weight: 0.55, height: 0.55, proportions: 1, african: 1, asian: 0, caucasian: 0,
     hair: 'none', eyebrows: 'eyebrow003', outfit: 'none', top: 'none', bottom: 'loincloth', underwear: false, shoes: 'none',
     accessories: [],
     garmentStyles: { loincloth: { pattern: 'adire', color: '#13234f', color2: '#3b9cff' } },
-    modifiers: { 'torso/torso-vshape': 0.8, 'torso/torso-muscle-dorsi': 0.7, 'neck/neck-scale-horiz': 0.4, 'torso/torso-scale-horiz': 0.25 },
+    modifiers: {
+      // Balanced torso (not too triangular), big defined limbs.
+      'torso/torso-vshape': 0.15, 'torso/torso-muscle-dorsi': 0.2, 'torso/torso-muscle-pectoral': 0.45, 'neck/neck-scale-horiz': 0.3,
+      'armslegs/upperarm-muscle': 0.9, 'armslegs/lowerarm-muscle': 0.8, 'armslegs/upperarm-scale-horiz': 0.35, 'armslegs/upperarm-scale-depth': 0.35,
+      'armslegs/lowerarm-scale-horiz': 0.2, 'armslegs/upperleg-muscle': 0.9, 'armslegs/lowerleg-muscle': 0.85,
+      'armslegs/upperleg-scale-depth': 0.1, 'armslegs/lowerleg-scale-horiz': 0.15, 'hip/hip-scale-horiz': -0.35,
+    },
   },
   'The Yoruba Warrior': {
     gender: 1, age: 0.55, muscle: 0.75, weight: 0.5, height: 0.48, african: 1, asian: 0, caucasian: 0,

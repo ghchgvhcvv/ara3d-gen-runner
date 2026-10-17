@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Character } from '../core/human';
-import { boneFor, type Motion, type Pose } from '../core/rig/poses';
+import { Animator } from '../core/anim/evaluate';
+import type { Clip } from '../core/anim/clips';
 import { localTransform, quatOf } from '../core/rig/rig';
 
 /** three.js viewport that displays a generated Character. */
@@ -14,11 +15,12 @@ export class Viewer {
   private mesh: THREE.Mesh | null = null;
   private helper: THREE.SkeletonHelper | null = null;
   private bones: THREE.Bone[] = [];
-  private rest: THREE.Quaternion[] = [];
-  private current: Character | null = null;
-  private pose: Pose = {};
-  private motion: Motion | null = null;
-  private clock = new THREE.Clock();
+  private animator: Animator | null = null;
+  private clip: Clip | null = null;
+  private clipStart = 0;
+  speed = 1;
+  /** Called with (clip, time) every frame while a clip plays (for the timeline UI). */
+  onTick?: (clip: Clip | null, t: number) => void;
   private loader = new THREE.TextureLoader();
   private texCache = new Map<string, THREE.Texture>();
   private framedHeight = 0;
@@ -69,7 +71,7 @@ export class Viewer {
     new ResizeObserver(() => this.resize()).observe(canvas);
     this.resize();
     const loop = () => {
-      if (this.motion) this.applyPose(this.motion.sample(this.clock.getElapsedTime() % this.motion.duration));
+      this.tick();
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
       requestAnimationFrame(loop);
@@ -143,7 +145,6 @@ export class Viewer {
       }
       return mat;
     });
-    this.current = ch;
     if (ch.rig && m.joints && m.weights) {
       geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(m.joints, 4));
       geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(m.weights, 4));
@@ -157,20 +158,19 @@ export class Viewer {
         return bone;
       });
       ch.rig.bones.forEach((b, i) => (b.parent >= 0 ? this.bones[b.parent] : sk).add(this.bones[i]));
-      this.rest = this.bones.map((b) => b.quaternion.clone());
       sk.updateMatrixWorld(true);
       sk.bind(new THREE.Skeleton(this.bones));
       this.mesh = sk;
     } else {
       this.bones = [];
-      this.rest = [];
       this.mesh = new THREE.Mesh(geo, mats);
     }
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.scene.add(this.mesh);
     this.drawSkeleton();
-    this.applyPose(this.pose);
+    this.animator = ch.rig && this.bones.length ? new Animator(ch.rig) : null;
+    this.tick();
 
     // Re-frame only when the height changes noticeably, so tweaking sliders doesn't jump the camera.
     if (Math.abs(ch.height - this.framedHeight) > 0.2) {
@@ -213,39 +213,30 @@ export class Viewer {
     this.scene.add(this.helper);
   }
 
-  /** Apply a test pose (rotations about rest-frame axes at each bone's head). */
-  private applyPose(pose: Pose) {
-    if (!this.current?.rig || !this.bones.length) return;
-    const rig = this.current.rig;
-    const byName = new Map(this.bones.map((b, i) => [b.name, i]));
-    this.bones.forEach((b, i) => b.quaternion.copy(this.rest[i]));
-    for (const [name, rots] of Object.entries(pose)) {
-      const target = boneFor(rig.type, name);
-      const i = target ? byName.get(target) : undefined;
-      if (i === undefined) continue;
-      // Axis given in the character's rest frame -> bone-local axis via the bone's world rest rotation.
-      const R = rig.bones[i].rot;
-      const worldRest = new THREE.Matrix4().set(R[0], R[3], R[6], 0, R[1], R[4], R[7], 0, R[2], R[5], R[8], 0, 0, 0, 0, 1);
-      const inv = worldRest.clone().transpose();
-      let delta = new THREE.Quaternion();
-      for (const { axis, deg } of rots) {
-        const a = new THREE.Vector3(...axis).applyMatrix4(inv).normalize();
-        delta = delta.multiply(new THREE.Quaternion().setFromAxisAngle(a, (deg * Math.PI) / 180));
-      }
-      this.bones[i].quaternion.multiply(delta);
-    }
+  private tick() {
+    if (!this.animator) return;
+    const now = performance.now() / 1000;
+    let t = 0;
+    let frame;
+    if (this.clip) {
+      const el = (now - this.clipStart) * this.speed;
+      t = this.clip.loop ? el % this.clip.duration : Math.min(el, this.clip.duration);
+      frame = this.animator.frame(this.clip, t);
+    } else frame = this.animator.bind();
+    frame.rot.forEach((q, i) => this.bones[i].quaternion.set(q[0], q[1], q[2], q[3]));
+    for (const [i, p] of frame.rootPos) this.bones[i].position.set(p[0], p[1], p[2]);
+    this.onTick?.(this.clip, t);
   }
 
-  setPose(pose: Pose) {
-    this.motion = null;
-    this.pose = pose;
-    this.applyPose(pose);
+  /** Play a clip (null = bind pose). One-shot clips hold their last frame. */
+  play(clip: Clip | null) {
+    this.clip = clip;
+    this.clipStart = performance.now() / 1000;
+    this.tick();
   }
 
-  playMotion(m: Motion | null) {
-    this.motion = m;
-    this.clock.start();
-    if (!m) this.applyPose(this.pose);
+  get playing(): Clip | null {
+    return this.clip;
   }
 
   setWireframe(on: boolean) {

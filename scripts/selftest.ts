@@ -9,6 +9,8 @@ import type { MeshData } from '../src/core/mesh';
 import { DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, type HumanParams } from '../src/core/params';
 import { exportCharacter } from '../src/export';
 import { dressing, GARMENTS } from '../src/core/garments';
+import { Animator } from '../src/core/anim/evaluate';
+import { CLIPS } from '../src/core/anim/clips';
 import { nodeLibrary } from './node-assets';
 
 let failures = 0;
@@ -98,9 +100,12 @@ async function checkExports(ch: Awaited<ReturnType<typeof buildHuman>>, label: s
   if (ch.rig) {
     if (!json.skins || json.skins[0].joints.length !== ch.rig.bones.length) fail(`${label}: GLB skin missing`);
     if (json.meshes[0].primitives[0].attributes.JOINTS_0 === undefined) fail(`${label}: GLB JOINTS_0 missing`);
+    const want = ch.params.animations ? CLIPS.length : 0;
+    if ((json.animations?.length ?? 0) !== want) fail(`${label}: GLB has ${json.animations?.length ?? 0} animations, expected ${want}`);
   }
   const counts = parseFbx((await exportCharacter(lib, ch, 'fbx')).data, label);
   if (ch.rig && (!counts.get('Pose') || (counts.get('Deformer') ?? 0) < 2)) fail(`${label}: FBX skin/bind pose missing`);
+  if (ch.rig && ch.params.animations && counts.get('AnimationStack') !== CLIPS.length) fail(`${label}: FBX animation stacks ${counts.get('AnimationStack')}`);
   if (counts.get('Material') !== ch.mesh.materials.length) fail(`${label}: FBX material count`);
   if ((counts.get('Video') ?? 0) !== texCount) fail(`${label}: FBX embedded texture count`);
 
@@ -161,6 +166,17 @@ for (const [label, p] of cases) {
     if ((p.rig ?? 'game') !== 'none' && (!ch.rig || !ch.mesh.joints)) fail(`${label}: not rigged`);
     if (ch.rig) for (const j of ch.mesh.joints!) if (j >= ch.rig.bones.length) { fail(`${label}: joint index out of range`); break; }
     checkMesh(ch.mesh, label, ch.height);
+    // Every clip evaluates to finite, unit quaternions on every rig.
+    if (ch.rig && label.startsWith('rig'))
+      for (const c of CLIPS) {
+        const { frames } = new Animator(ch.rig).bake(c, 10);
+        for (const f of frames)
+          for (const q of f.rot)
+            if (!q.every(Number.isFinite) || Math.abs(Math.hypot(...q) - 1) > 1e-4) {
+              fail(`${label}: clip ${c.id} produced a bad rotation`);
+              break;
+            }
+      }
     if (label.startsWith('preset') || label.startsWith('seed 1') || label.startsWith('rig')) await checkExports(ch, label);
   } catch (e) {
     fail(`${label}: threw ${(e as Error).stack}`);

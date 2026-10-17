@@ -92,9 +92,26 @@ Characters are rigged automatically, with no markers to place. The skeleton is b
 
 GLB exports a joint hierarchy, inverse bind matrices and JOINTS_0/WEIGHTS_0. FBX exports LimbNodes, Skin/Cluster deformers and a bind pose. The ZIP adds `<name>.rig.json`, the bind pose in an engine-neutral form. The viewer can test the rig with poses (arms up, wave, squat, fist) and motions (idle, walk). `scripts/blender_rig_check.py` imports the exports into Blender and checks that posing deforms the mesh correctly.
 
-## Roadmap: animation
+## Animation
 
-1. Keyframed clip format on top of `core/rig/poses.ts` (rotations in the rest frame, so one clip drives every skeleton type).
-2. Clip library (idle, walk, run, jump, attack, emotes) with blending in the viewer.
-3. Export clips as glTF `animations` and FBX `AnimationStack`s.
-4. Optional root motion, and facial animation through the jaw and eye bones and MakeHuman's expression targets.
+The character loads playing **Idle**, a rigged idle with relaxed arms. The animation bar at the top of the viewport plays the clips:
+
+| Clip | Type |
+| --- | --- |
+| Idle, Walk, Run, Walk backwards | loops, in place |
+| Fall | one-shot, backward fall to lying |
+| Turn left/right 45° and 90°, full turn 360° | one-shot, hip (root) yaw with stepping feet |
+
+Clips are defined once (`src/core/anim/clips.ts`), in each bone's own frame (X = flex forward, Y = twist, Z = side), on an "animation rest" with relaxed arms and nearly straight elbows. One shared evaluator (`src/core/anim/evaluate.ts`) drives the viewer and both exporters, so one clip works on every skeleton type and on A- or T-pose binds, and the preview matches the export exactly.
+
+Rig and animation options live in the export bar (the 🦴 button): skeleton type, rest pose, facial bones, and whether to include animations. With animations on:
+- **GLB:** one glTF animation per clip (30 fps, rotation channels plus root translation).
+- **FBX:** one AnimationStack (take) per clip.
+
+`scripts/blender_anim_check.py` imports the files into Blender and renders key frames of every action.
+
+### Next
+
+- More clips (jump, crouch, strafe, attack, hit react, emotes), plus blending and transitions in the viewer.
+- Optional root motion (walk/run that travel forward) as an export setting.
+- Facial animation through the jaw and eye bones and MakeHuman's expression targets.

@@ -271,6 +271,7 @@ function buildSliders(available: Set<string>): { groups: SliderGroup[]; targets:
   >;
   const used = new Set<string>();
   const groups: SliderGroup[] = [];
+  const emitted = new Set<string>();
   const pretty = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, ' ');
   const SKIP = /genital|penis|bulge|testicle|nipple|pelvis-tone/i;
   for (const [category, cat] of Object.entries(defs).sort((a, b) => a[1].sortOrder - b[1].sortOrder)) {
@@ -314,8 +315,13 @@ function buildSliders(available: Set<string>): { groups: SliderGroup[]; targets:
           log(`  skip slider ${dir}/${id}: missing ${missing.join(', ')}`);
           continue;
         }
+        // Multi-axis sliders (e.g. "torso-trans" up/down, in/out, forward/backward) share a name: keep ids unique.
+        let sid = `${dir}/${id}`;
+        if (emitted.has(sid) && range) sid = `${sid}:${range}`;
+        if (emitted.has(sid)) continue; // left/right twins merged into one symmetric slider already
+        emitted.add(sid);
         flat.forEach((t) => used.add(t));
-        sliders.push({ id: `${dir}/${id}`, label, targets: pairs, bipolar: !!range });
+        sliders.push({ id: sid, label: label + (sid.includes(':') ? ` (${lo}/${hi})` : ''), targets: pairs, bipolar: !!range });
       }
       if (sliders.length) groups.push({ category, group, sliders });
     }

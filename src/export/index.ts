@@ -3,6 +3,8 @@ import type { AssetLibrary } from '../core/assets';
 import { textureFiles, type Character } from '../core/human';
 import { triangleCount } from '../core/mesh';
 import { quatOf } from '../core/rig/rig';
+import { Animator, type BakedClip } from '../core/anim/evaluate';
+import { CLIPS } from '../core/anim/clips';
 import { exportFBX } from './fbx';
 import { exportGLB, mimeOf } from './glb';
 import { exportOBJ } from './obj';
@@ -36,6 +38,7 @@ export async function exportCharacter(
 ): Promise<ExportFile> {
   const stem = fileStem(ch.params.name);
   const textures = await loadTextures(lib, ch);
+  const clips = bakeClips(ch);
   const objFiles = (): Zippable => {
     const { obj, mtl } = exportOBJ(ch.mesh, stem, `${stem}.mtl`);
     const files: Zippable = { [`${stem}.obj`]: strToU8(obj), [`${stem}.mtl`]: strToU8(mtl) };
@@ -44,15 +47,15 @@ export async function exportCharacter(
   };
   switch (format) {
     case 'glb':
-      return { name: `${stem}.glb`, data: exportGLB(ch.mesh, stem, textures, ch.rig), mime: 'model/gltf-binary' };
+      return { name: `${stem}.glb`, data: exportGLB(ch.mesh, stem, textures, ch.rig, clips), mime: 'model/gltf-binary' };
     case 'fbx':
-      return { name: `${stem}.fbx`, data: exportFBX(ch.mesh, stem, textures, ch.rig), mime: 'application/octet-stream' };
+      return { name: `${stem}.fbx`, data: exportFBX(ch.mesh, stem, textures, ch.rig, clips), mime: 'application/octet-stream' };
     case 'obj':
       return { name: `${stem}_obj.zip`, data: zipSync(objFiles(), { level: 6 }), mime: 'application/zip' };
     case 'zip': {
       const files: Zippable = {
-        [`${stem}.glb`]: [exportGLB(ch.mesh, stem, textures, ch.rig), { level: 0 }],
-        [`${stem}.fbx`]: exportFBX(ch.mesh, stem, textures, ch.rig),
+        [`${stem}.glb`]: [exportGLB(ch.mesh, stem, textures, ch.rig, clips), { level: 0 }],
+        [`${stem}.fbx`]: exportFBX(ch.mesh, stem, textures, ch.rig, clips),
         obj: objFiles(),
         [`${stem}.params.json`]: strToU8(JSON.stringify(ch.params, null, 2)),
         ...(ch.rig ? { [`${stem}.rig.json`]: strToU8(JSON.stringify(rigJson(ch), null, 1)) } : {}),
@@ -63,6 +66,13 @@ export async function exportCharacter(
       return { name: `${stem}.zip`, data: zipSync({ [stem]: files }, { level: 6 }), mime: 'application/zip' };
     }
   }
+}
+
+/** All clips baked at 30 fps for the character's rig (when rigged and animations are on). */
+function bakeClips(ch: Character): BakedClip[] {
+  if (!ch.rig || !ch.params.animations) return [];
+  const a = new Animator(ch.rig);
+  return CLIPS.map((c) => ({ name: c.name, loop: c.loop, ...a.bake(c) }));
 }
 
 /** Engine-neutral skeleton description (bind pose), for retargeting and the animation step. */

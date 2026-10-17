@@ -6,6 +6,8 @@ import { zlibSync } from 'fflate';
 import type { MeshData } from '../core/mesh';
 import { hexToRgb, srgbToLinear } from '../core/math';
 import { localTransform, mulMV, transpose, type Mat3, type Rig } from '../core/rig/rig';
+import type { BakedClip } from '../core/anim/evaluate';
+import { qToEulerXYZ } from '../core/anim/quat';
 
 // --- Low-level node tree -----------------------------------------------------
 
@@ -17,7 +19,9 @@ type Prop =
   | { t: 'S'; v: string }
   | { t: 'R'; v: Uint8Array }
   | { t: 'i'; v: Int32Array }
-  | { t: 'd'; v: Float64Array };
+  | { t: 'd'; v: Float64Array }
+  | { t: 'f'; v: Float32Array }
+  | { t: 'l'; v: BigInt64Array };
 
 const C = (v: boolean): Prop => ({ t: 'C', v });
 const I = (v: number): Prop => ({ t: 'I', v });
@@ -27,6 +31,8 @@ const S = (v: string): Prop => ({ t: 'S', v });
 const R = (v: Uint8Array): Prop => ({ t: 'R', v });
 const Ai = (v: Int32Array | number[]): Prop => ({ t: 'i', v: v instanceof Int32Array ? v : Int32Array.from(v) });
 const Ad = (v: Float64Array | number[]): Prop => ({ t: 'd', v: v instanceof Float64Array ? v : Float64Array.from(v) });
+const Af = (v: number[]): Prop => ({ t: 'f', v: Float32Array.from(v) });
+const Al = (v: number[]): Prop => ({ t: 'l', v: BigInt64Array.from(v.map((x) => BigInt(Math.round(x)))) });
 
 interface FbxNode {
   name: string;
@@ -55,7 +61,7 @@ class ByteWriter {
   u8(v: number) { this.ensure(1); this.dv.setUint8(this.len, v); this.len += 1; }
   u32(v: number) { this.ensure(4); this.dv.setUint32(this.len, v, true); this.len += 4; }
   i32(v: number) { this.ensure(4); this.dv.setInt32(this.len, v, true); this.len += 4; }
-  i64(v: number) { this.ensure(8); this.dv.setBigInt64(this.len, BigInt(v), true); this.len += 8; }
+  i64(v: number) { this.ensure(8); this.dv.setBigInt64(this.len, BigInt(Math.round(v)), true); this.len += 8; }
   f64(v: number) { this.ensure(8); this.dv.setFloat64(this.len, v, true); this.len += 8; }
   bytes(b: Uint8Array) { this.ensure(b.length); this.buf.set(b, this.len); this.len += b.length; }
   zeros(n: number) { this.ensure(n); this.buf.fill(0, this.len, this.len + n); this.len += n; }
@@ -78,7 +84,7 @@ function writeProp(w: ByteWriter, p: Prop) {
       w.bytes(b);
       break;
     }
-    case 'i': case 'd': {
+    case 'i': case 'd': case 'f': case 'l': {
       const raw = new Uint8Array(p.v.buffer, p.v.byteOffset, p.v.byteLength);
       const compress = p.v.length > 64;
       const data = compress ? zlibSync(raw) : raw;
@@ -159,7 +165,9 @@ function eulerXYZ(R: Mat3): [number, number, number] {
   return [Math.atan2(-R[7], R[4]) * deg, (r20 < 0 ? 90 : -90), 0];
 }
 
-export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig): Uint8Array {
+const KTIME = 46186158000; // FBX time units per second
+
+export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Uint8Array>, rig?: Rig, clips: BakedClip[] = []): Uint8Array {
   let nextId = 1_000_000;
   const id = () => nextId++;
   const geomId = id(), modelId = id(), docId = id();
@@ -321,7 +329,8 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
   // --- Skeleton + skin -----------------------------------------------------------
   const rigObjs: FbxNode[] = [];
   const rigConn: FbxNode[] = [];
-  let boneCount = 0, deformerCount = 0, attrCount = 0;
+  let boneCount = 0, deformerCount = 0, attrCount = 0, curveNodeCount = 0, curveCount = 0;
+  const animStacks: { name: string; stop: number }[] = [];
   if (rig && mesh.joints && mesh.weights) {
     const B = rig.bones;
     const armId = id(), armAttr = id(), skinId = id(), poseId = id();
@@ -394,6 +403,58 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
     ]));
     boneCount = B.length;
     attrCount = B.length + 1;
+
+    // Animations: one AnimationStack (take) per clip; Euler XYZ rotation curves per bone, plus root translation.
+    for (const c of clips) {
+      const stackId = id(), layerId = id();
+      const stop = c.times[c.times.length - 1] * KTIME;
+      const keyTimes = c.times.map((t) => t * KTIME);
+      rigObjs.push(
+        N('AnimationStack', [L(stackId), S(objName(c.name, 'AnimStack')), S('')], [N('Properties70', [], [
+          P('LocalStart', 'KTime', 'Time', '', L(0)), P('LocalStop', 'KTime', 'Time', '', L(stop)),
+          P('ReferenceStart', 'KTime', 'Time', '', L(0)), P('ReferenceStop', 'KTime', 'Time', '', L(stop)),
+        ])]),
+        N('AnimationLayer', [L(layerId), S(objName('BaseLayer', 'AnimLayer')), S('')]),
+      );
+      rigConn.push(N('C', [S('OO'), L(layerId), L(stackId)]));
+      animStacks.push({ name: c.name, stop });
+      const curveNode = (owner: number, prop: string, short: string, values: number[][]) => {
+        const nodeId = id();
+        rigObjs.push(N('AnimationCurveNode', [L(nodeId), S(objName(short, 'AnimCurveNode')), S('')], [N('Properties70', [], [
+          P('d|X', 'Number', '', 'A', D(values[0][0])), P('d|Y', 'Number', '', 'A', D(values[0][1])), P('d|Z', 'Number', '', 'A', D(values[0][2])),
+        ])]));
+        rigConn.push(N('C', [S('OO'), L(nodeId), L(layerId)]), N('C', [S('OP'), L(nodeId), L(owner), S(prop)]));
+        ['X', 'Y', 'Z'].forEach((axis, a) => {
+          const cid = id();
+          rigObjs.push(N('AnimationCurve', [L(cid), S(objName('', 'AnimCurve')), S('')], [
+            N('Default', [D(values[0][a])]),
+            N('KeyVer', [I(4009)]),
+            N('KeyTime', [Al(keyTimes)]),
+            N('KeyValueFloat', [Af(values.map((v) => v[a]))]),
+            N('KeyAttrFlags', [Ai([24836])]),
+            N('KeyAttrDataFloat', [Af([0, 0, 9.419963346924634e-30, 0])]),
+            N('KeyAttrRefCount', [Ai([values.length])]),
+          ]));
+          rigConn.push(N('C', [S('OP'), L(cid), L(nodeId), S(`d|${axis}`)]));
+          curveCount++;
+        });
+        curveNodeCount++;
+      };
+      B.forEach((b, i) => {
+        // Euler angles, unwrapped so curves stay continuous.
+        const eul: number[][] = [];
+        for (const f of c.frames) {
+          const e = qToEulerXYZ(f.rot[i]);
+          if (eul.length) {
+            const p = eul[eul.length - 1];
+            for (let k = 0; k < 3; k++) e[k] += Math.round((p[k] - e[k]) / 360) * 360;
+          }
+          eul.push([...e]);
+        }
+        curveNode(boneIds[i], 'Lcl Rotation', 'R', eul);
+        if (b.parent < 0) curveNode(boneIds[i], 'Lcl Translation', 'T', c.frames.map((f) => f.rootPos.get(i)!.map((x) => x * CM)));
+      });
+    }
   }
 
   const now = new Date();
@@ -432,9 +493,9 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
         P('OriginalUnitScaleFactor', 'double', 'Number', '', D(1)),
         P('AmbientColor', 'ColorRGB', 'Color', '', D(0), D(0), D(0)),
         P('DefaultCamera', 'KString', '', '', S('Producer Perspective')),
-        P('TimeMode', 'enum', '', '', I(11)),
+        P('TimeMode', 'enum', '', '', I(6)), // 30 fps
         P('TimeSpanStart', 'KTime', 'Time', '', L(0)),
-        P('TimeSpanStop', 'KTime', 'Time', '', L(46186158000)),
+        P('TimeSpanStop', 'KTime', 'Time', '', L(Math.max(KTIME, ...animStacks.map((a) => a.stop)))),
         P('CustomFrameRate', 'double', 'Number', '', D(30)),
       ]),
     ]),
@@ -451,7 +512,7 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
     N('References'),
     N('Definitions', [], [
       N('Version', [I(100)]),
-      N('Count', [I(3 + mesh.materials.length + videoCount * 2 + (boneCount ? boneCount + 1 + attrCount + deformerCount + 1 : 0))]),
+      N('Count', [I(3 + mesh.materials.length + videoCount * 2 + (boneCount ? boneCount + 1 + attrCount + deformerCount + 1 : 0) + animStacks.length * 2 + curveNodeCount + curveCount)]),
       N('ObjectType', [S('GlobalSettings')], [N('Count', [I(1)])]),
       N('ObjectType', [S('Model')], [N('Count', [I(1 + (boneCount ? boneCount + 1 : 0))])]),
       ...(boneCount
@@ -459,6 +520,14 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
             N('ObjectType', [S('NodeAttribute')], [N('Count', [I(attrCount)])]),
             N('ObjectType', [S('Deformer')], [N('Count', [I(deformerCount)])]),
             N('ObjectType', [S('Pose')], [N('Count', [I(1)])]),
+          ]
+        : []),
+      ...(animStacks.length
+        ? [
+            N('ObjectType', [S('AnimationStack')], [N('Count', [I(animStacks.length)])]),
+            N('ObjectType', [S('AnimationLayer')], [N('Count', [I(animStacks.length)])]),
+            N('ObjectType', [S('AnimationCurveNode')], [N('Count', [I(curveNodeCount)])]),
+            N('ObjectType', [S('AnimationCurve')], [N('Count', [I(curveCount)])]),
           ]
         : []),
       N('ObjectType', [S('Geometry')], [N('Count', [I(1)])]),
@@ -478,7 +547,14 @@ export function exportFBX(mesh: MeshData, name: string, textures: Map<string, Ui
       ...texConn,
       ...rigConn,
     ]),
-    N('Takes', [], [N('Current', [S('')])]),
+    N('Takes', [], [
+      N('Current', [S(animStacks[0]?.name ?? '')]),
+      ...animStacks.map((a) => N('Take', [S(a.name)], [
+        N('FileName', [S(`${a.name.replace(/[^a-zA-Z0-9]+/g, '_')}.tak`)]),
+        N('LocalTime', [L(0), L(a.stop)]),
+        N('ReferenceTime', [L(0), L(a.stop)]),
+      ])),
+    ]),
   ];
   return serialize(root);
 }

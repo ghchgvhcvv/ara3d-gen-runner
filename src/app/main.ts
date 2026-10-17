@@ -3,7 +3,7 @@ import { autoSkin, buildHuman, type Character } from '../core/human';
 import { triangleCount } from '../core/mesh';
 import { ageToYears, DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, yearsToAge, type HumanParams } from '../core/params';
 import { GARMENTS, garmentById, PATTERNS } from '../core/garments';
-import { MOTIONS, POSES } from '../core/rig/poses';
+import { CLIPS, clipById } from '../core/anim/clips';
 import { RIG_LABELS, type RigType } from '../core/rig/skeletons';
 import { exportCharacter, type ExportFormat } from '../export';
 import { Viewer } from './viewer';
@@ -50,8 +50,11 @@ function regenerate() {
     viewer.show(ch);
     $('#loading').hidden = true;
     rigStatus.textContent = ch.rig
-      ? `✓ Auto-rigged: ${ch.rig.bones.length} bones · ${ch.rig.restPose}-pose · 4 influences per vertex`
+      ? `✓ Auto-rigged: ${ch.rig.bones.length} bones · ${ch.rig.restPose}-pose bind · 4 influences per vertex`
       : 'Rig off: static mesh export.';
+    animBar.style.display = ch.rig ? '' : 'none';
+    syncRigBtn();
+    if (ch.rig && !viewer.playing && activeClip !== 'bind') playClip(activeClip);
     const skin = params.skin === 'auto' ? ` · skin: ${autoSkin(params, cat.skins).name}` : '';
     $('#stats').textContent =
       `${(ch.height * 100).toFixed(0)} cm · ${ageToYears(params.age).toFixed(0)} yrs · ` +
@@ -283,47 +286,68 @@ for (const d of DETAILS) detail.append(new Option({ low: 'Low (game LOD, ~5k tri
 detail.addEventListener('change', () => set({ detail: detail.value as HumanParams['detail'] }));
 sync.push(() => (detail.value = params.detail));
 detail.value = params.detail;
-// --- Rig ------------------------------------------------------------------------
+// --- Rig options (in the export bar) & animation bar ------------------------------------
 
+const rigBtn = $<HTMLButtonElement>('#rig-btn');
+const rigPop = $('#rig-pop');
 const rigStatus = el('div', { className: 'rig-status' });
-const poseButtons = el('div', { className: 'pose-buttons' });
-let activePose = 'Rest';
-const markPose = () => poseButtons.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.name === activePose));
-for (const name of Object.keys(POSES)) {
-  const b = el('button', { textContent: name });
-  b.dataset.name = name;
-  b.addEventListener('click', () => {
-    activePose = name;
-    viewer.setPose(POSES[name]);
-    markPose();
-  });
-  poseButtons.append(b);
-}
-for (const name of Object.keys(MOTIONS)) {
-  const b = el('button', { textContent: `▶ ${name}` });
-  b.dataset.name = `motion:${name}`;
-  b.addEventListener('click', () => {
-    activePose = `motion:${name}`;
-    viewer.playMotion(MOTIONS[name]);
-    markPose();
-  });
-  poseButtons.append(b);
-}
-markPose();
-controls.append(section('Rig', true,
-  el('div', { className: 'hint', textContent: 'Rigged automatically from the body: no markers needed. Exported GLB and FBX include the skeleton and skin weights (OBJ stays static).' }),
+rigPop.append(
+  el('div', { className: 'sub', textContent: 'Rig & animation (GLB / FBX)' }),
   selectRow('Skeleton', (Object.keys(RIG_LABELS) as RigType[]).map((k) => [k, RIG_LABELS[k]]), () => params.rig, (v) => set({ rig: v as RigType })),
   selectRow('Rest pose', [['A', 'A-pose (natural)'], ['T', 'T-pose (Mixamo / Unity Humanoid)']], () => params.restPose, (v) => set({ restPose: v as 'A' | 'T' })),
-  el('label', { className: 'acc' }, (() => {
-    const box = el('input', { type: 'checkbox' });
-    box.addEventListener('change', () => set({ faceBones: box.checked }));
-    sync.push(() => (box.checked = params.faceBones));
-    return box;
-  })(), 'Facial bones (jaw + eyes)'),
-  el('div', { className: 'sub', textContent: 'Test the rig' }),
-  poseButtons,
+  checkRow('Facial bones (jaw + eyes)', () => params.faceBones, (v) => set({ faceBones: v })),
+  checkRow(`Include ${CLIPS.length} animations`, () => params.animations, (v) => set({ animations: v })),
+  el('div', { className: 'hint', textContent: `Clips: ${CLIPS.map((c) => c.name).join(', ')}. Loops are in place; turns rotate the hips (root). OBJ is always static.` }),
   rigStatus,
-));
+);
+rigBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  rigPop.hidden = !rigPop.hidden;
+});
+document.addEventListener('click', (e) => {
+  if (!rigPop.hidden && !rigPop.contains(e.target as Node) && e.target !== rigBtn) rigPop.hidden = true;
+});
+const syncRigBtn = () => {
+  rigBtn.textContent = params.rig === 'none'
+    ? '🦴 Rig: off ▾'
+    : `🦴 ${params.rig === 'full' ? 'Full' : params.rig === 'game_lite' ? 'Lite' : 'Game'} rig · ${params.restPose}-pose${params.animations ? ` · ${CLIPS.length} anims` : ''} ▾`;
+};
+sync.push(syncRigBtn);
+
+function checkRow(label: string, get: () => boolean, put: (v: boolean) => void) {
+  const box = el('input', { type: 'checkbox' });
+  box.addEventListener('change', () => put(box.checked));
+  sync.push(() => (box.checked = get()));
+  box.checked = get();
+  return el('label', { className: 'acc' }, box, label);
+}
+
+// Animation bar: Idle plays by default ("rigged idle").
+const animBar = $('#anim-bar');
+const progress = el('div', { className: 'anim-progress' }, el('div'));
+let activeClip = 'idle';
+const animButtons = new Map<string, HTMLButtonElement>();
+const playClip = (id: string) => {
+  activeClip = id;
+  viewer.play(id === 'bind' ? null : clipById.get(id) ?? null);
+  animButtons.forEach((b, k) => b.classList.toggle('on', k === id));
+};
+for (const [id, label] of [['bind', 'Bind pose'], ...CLIPS.map((c) => [c.id, c.name] as [string, string])] as [string, string][]) {
+  const short = label.replace('Turn left ', '↺ L ').replace('Turn right ', '↻ R ').replace('Full turn 360°', '⟳ 360°').replace('Walk backwards', 'Walk back');
+  const b = el('button', { textContent: short });
+  b.title = label;
+  b.addEventListener('click', () => playClip(id));
+  animButtons.set(id, b);
+  animBar.append(b);
+}
+const speed = el('select', { title: 'Playback speed' });
+for (const s of ['0.25', '0.5', '1', '1.5']) speed.append(new Option(`${s}×`, s));
+speed.value = '1';
+speed.addEventListener('change', () => (viewer.speed = Number(speed.value)));
+animBar.append(speed, progress);
+viewer.onTick = (clip, t) => {
+  (progress.firstChild as HTMLElement).style.width = clip ? `${(t / clip.duration) * 100}%` : '0%';
+};
 
 controls.append(section('Output', true, el('div', { className: 'ctl wide' }, el('span', { textContent: 'Detail' }), detail), reset));
 
@@ -385,9 +409,8 @@ const presetName = hash.get('preset');
 if (presetName && PRESETS[presetName]) params = { ...DEFAULT_PARAMS, ...PRESETS[presetName], name: presetName, detail: params.detail };
 sync.forEach((f) => f());
 regenerate();
-const poseName = hash.get('pose'), motionName = hash.get('motion');
-if (poseName && POSES[poseName]) viewer.setPose(POSES[poseName]);
-if (motionName && MOTIONS[motionName]) viewer.playMotion(MOTIONS[motionName]);
+const clipName = hash.get('clip');
+if (clipName && clipById.has(clipName)) activeClip = clipName;
 if (hash.has('skeleton')) {
   $<HTMLInputElement>('#skeleton').checked = true;
   viewer.setSkeleton(true);
