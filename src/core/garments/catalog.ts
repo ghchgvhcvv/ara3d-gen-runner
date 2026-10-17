@@ -201,6 +201,44 @@ function beads(ring: Vec3[], closed: boolean, spacing: number, r: Vec3, colors: 
 
 const MAASAI_BEADS = ['#d62828', '#f4f1ea', '#1d4fbf', '#f2a516', '#2a8c4a', '#f4f1ea', '#111111'];
 
+/** Uniform shirt (tucked in, collar, epaulettes in the accent colour), short or long sleeved. */
+function uniformShirt(g: GCtx, st: GarmentStyle, long: boolean): GPart[] {
+  const b = g.body;
+  const tn = cm(2.2) / (b.L.neckY - b.L.hipY);
+  const m = cloth(g, 'Uniform shirt', st);
+  const body = shellPart(g, {
+    // Short sleeves end above the elbow (loose at the cuff); long sleeves reach the wrist.
+    covers: (v) => (isTrunk(v) && v.t > 0.2) || (v.region === REGION.neck && v.t < 1 + tn) ||
+      (v.region === REGION.upperarm && (long || v.t < 0.58)) || (long && v.region === REGION.lowerarm && v.t < 0.93),
+    offset: (v) => cm(1.0) + (!long && v.region === REGION.upperarm ? cm(1.1) * clamp(v.t / 0.58, 0, 1) : 0), tile: 0.3, relax: 3,
+  }, m);
+  // Epaulettes (accent colour) on the shoulder tops, placed on the shirt's outer surface.
+  const P = body[0]?.mesh.positions ?? new Float32Array();
+  const trunk: Vec3[] = [];
+  for (let i = 0; i < P.length; i += 3) trunk.push([P[i], P[i + 1], P[i + 2]]);
+  const straps: PolyMesh[] = [];
+  // Highest shirt point across the shoulder at lateral distance x (on the shoulder's crest).
+  const topAt = (x: number): Vec3 | null => {
+    let top: Vec3 | null = null;
+    for (const q of trunk) if (Math.abs(q[0] - x) < cm(1.2) && Math.abs(q[2] - b.L.torsoZ) < cm(6) && (!top || q[1] > top[1])) top = q;
+    return top;
+  };
+  for (const sgn of [1, -1]) {
+    const a = topAt(0.45 * b.L.shoulderX * sgn), c = topAt(0.88 * b.L.shoulderX * sgn);
+    if (!a || !c) continue;
+    // Lie along the sloping shoulder line, just on top of the shirt.
+    const along = v3.norm(v3.sub(c, a));
+    let up = v3.norm(v3.cross(Z, along));
+    if (up[1] < 0) up = v3.scale(up, -1);
+    const mid = v3.add(v3.scale(v3.add(a, c), 0.5), v3.scale(up, cm(0.3)));
+    straps.push(roundedBox(frameOf(mid, up, along), [cm(2.2), v3.len(v3.sub(c, a)) / 2, cm(0.25)], 0.5));
+  }
+  return [
+    ...body,
+    ...(straps.length ? [{ mesh: merge(straps)!, material: mat('Epaulettes', null, { color: st.color2, roughness: 0.5, metalness: 0.3 }) }] : []),
+  ];
+}
+
 // --- Garments ---------------------------------------------------------------------
 
 
@@ -226,6 +264,14 @@ export const GARMENTS: GarmentDef[] = [
         offset: cm(1.0), tile: 0.3, relax: 3,
       }, cloth(g, 'Fatigue shirt', st));
     },
+  },
+  {
+    id: 'uniform_shirt', label: 'Uniform shirt (short sleeves)', slot: 'top', patterns: ['solid', 'khaki', 'camo'], color: '#16181d', color2: '#2a2c31',
+    build: (g, st) => uniformShirt(g, st, false),
+  },
+  {
+    id: 'uniform_shirt_long', label: 'Uniform shirt (long sleeves)', slot: 'top', patterns: ['solid', 'khaki', 'camo'], color: '#16181d', color2: '#2a2c31',
+    build: (g, st) => uniformShirt(g, st, true),
   },
   {
     id: 'techwear_jacket', label: 'Techwear jacket', slot: 'top', patterns: ['techwear', 'solid'], color: '#1b1d22', color2: '#00e5ff',
@@ -311,6 +357,13 @@ export const GARMENTS: GarmentDef[] = [
         offset: cm(0.9), tile: 0.3,
       }, m), ...cargoPockets(g, 0.55, m)];
     },
+  },
+  {
+    id: 'uniform_trousers', label: 'Uniform trousers', slot: 'bottom', patterns: ['solid', 'khaki', 'camo'], color: '#16181d', color2: '#c9a24a',
+    build: (g, st) => shellPart(g, {
+      covers: (v) => (isTrunk(v) && v.t < 0.26) || v.region === REGION.upperleg || (v.region === REGION.lowerleg && v.t < 0.9),
+      offset: (v) => cm(0.8) + (v.region === REGION.lowerleg ? cm(0.6) * v.t : 0), tile: 0.3,
+    }, cloth(g, 'Uniform trousers', st)),
   },
   {
     id: 'techwear_pants', label: 'Techwear pants', slot: 'bottom', patterns: ['techwear', 'solid'], color: '#202228', color2: '#00e5ff',
@@ -525,6 +578,44 @@ export const GARMENTS: GarmentDef[] = [
       return [
         ...(vest ? [{ mesh: vest.mesh, material: m, smooth: true }] : []),
         ...(pouches.length ? [{ mesh: merge(pouches)!, material: m }] : []),
+      ];
+    },
+  },
+  {
+    id: 'reflective_vest', label: 'Reflective vest (hi-vis)', slot: 'acc', patterns: ['solid'], color: '#c6e82a', color2: '#d9dee4',
+    build: (g, st) => {
+      const b = g.body;
+      const vest = shell(g, {
+        covers: (v) => isUpper(v) && v.tt >= 0.22 && (v.tt < 0.72 || Math.abs(v.ax - 0.62 * b.L.shoulderX) < 0.2 * b.L.shoulderX),
+        offset: cm(1.8), tile: 0.3, relax: 8,
+      });
+      // Two reflective bands around the body.
+      const trunk = points(b, isTrunk);
+      const bands = [0.4, 0.58].map((t) => solidBand(trunk, hplane(b, torsoY(b, t)), cm(4.5), cm(0.15), cm(1.95), { samples: 72, slab: cm(2) }));
+      return [
+        ...(vest ? [{ mesh: vest.mesh, material: cloth(g, 'Reflective vest', st, { roughness: 0.7 }), smooth: true }] : []),
+        ...(bands.some(Boolean) ? [{ mesh: merge(bands)!, material: mat('Reflective tape', null, { color: st.color2, roughness: 0.25, metalness: 0.55 }) }] : []),
+      ];
+    },
+  },
+  {
+    id: 'beret', label: 'Beret', slot: 'acc', patterns: ['solid'], color: '#16181d', color2: '#c9a24a',
+    build: (g, st) => {
+      const b = g.body;
+      // Pulled down to the character's right, flat crown, leather rim and a badge over the left eye.
+      const r = shell(g, {
+        covers: (v) => v.region === REGION.head && (Math.abs(v.theta) < 1.1 ? v.t > 0.76 : v.t > 0.64),
+        offset: (v) => cm(0.9) + cm(2.6) * clamp((v.t - 0.72) * 4, 0, 1) * (1 - 0.55 * Math.sin(v.theta)), tile: 0.2, relax: 4,
+      });
+      const head = points(b, (v) => v.region === REGION.head);
+      const rimY = b.L.crownY - (b.L.crownY - b.L.chinY) * 0.27;
+      const rim = solidBand(head, { origin: [0, rimY, b.L.headZ], normal: Y }, cm(1.4), cm(0.35), cm(0.7), { samples: 48, slab: cm(1.2) });
+      const front = hullRing(head, { origin: [0, rimY + cm(2.2), b.L.headZ], normal: Y }, { slab: cm(1.5), samples: 48, offset: cm(1.4) });
+      const badge = front ? roundedBox(frameOf(ringAt(front, 0.35).p, ringAt(front, 0.35).out, Y), [cm(1.2), cm(1.5), cm(0.3)], 0.6) : null;
+      return [
+        ...(r ? [{ mesh: r.mesh, material: cloth(g, 'Beret', st, { roughness: 0.95 }), headwear: true, smooth: true }] : []),
+        ...(rim ? [{ mesh: rim, material: mat('Beret rim', null, { color: '#0e0e0e', roughness: 0.5 }) }] : []),
+        ...(badge ? [{ mesh: badge, material: mat('Badge', null, { color: st.color2, roughness: 0.3, metalness: 0.85 }) }] : []),
       ];
     },
   },

@@ -231,6 +231,34 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
       waist_sash: { pattern: 'solid', color: '#9b1c1c' },
     },
   },
+  // Nigeria Police Force, general duty: all-black uniform (black shirt and trousers), black boots and duty belt.
+  'The Police Officer (Nigeria)': {
+    gender: 1, age: 0.56, muscle: 0.62, weight: 0.55, height: 0.52, african: 1, asian: 0, caucasian: 0,
+    hair: 'buzz', facialHair: 'stubble', eyebrows: 'eyebrow003', outfit: 'none',
+    top: 'uniform_shirt', bottom: 'uniform_trousers', shoes: 'combat_boots', accessories: ['beret', 'utility_belt'],
+    garmentStyles: {
+      uniform_shirt: { pattern: 'solid', color: '#141519', color2: '#24262c' },
+      uniform_shirt_long: { pattern: 'solid', color: '#141519', color2: '#24262c' },
+      uniform_trousers: { pattern: 'solid', color: '#141519' },
+      beret: { pattern: 'solid', color: '#141519', color2: '#c9ccd2' },
+      utility_belt: { pattern: 'leather', color: '#111111' },
+    },
+  },
+  // FRSC marshal, No. 5b dress (FRSC dress code, 2025 compendium): beige short-sleeve shirt tucked into
+  // black trousers, beige epaulettes, service belt, black boots; maroon beret with cap badge.
+  'The FRSC Officer (Nigeria)': {
+    gender: 1, age: 0.52, muscle: 0.55, weight: 0.5, height: 0.55, african: 1, asian: 0, caucasian: 0,
+    hair: 'buzz', eyebrows: 'eyebrow001', outfit: 'none',
+    top: 'uniform_shirt', bottom: 'uniform_trousers', shoes: 'combat_boots', accessories: ['beret', 'belt'],
+    garmentStyles: {
+      uniform_shirt: { pattern: 'solid', color: '#c9b48c', color2: '#b49d72' },
+      uniform_shirt_long: { pattern: 'solid', color: '#c9b48c', color2: '#b49d72' },
+      uniform_trousers: { pattern: 'solid', color: '#141519' },
+      beret: { pattern: 'solid', color: '#6a1b2a', color2: '#d4a845' },
+      belt: { pattern: 'leather', color: '#111111' },
+      reflective_vest: { pattern: 'solid', color: '#c6e82a', color2: '#d9dee4' },
+    },
+  },
   Detective: {
     gender: 0.95, age: 0.65, muscle: 0.55, weight: 0.5, height: 0.55, african: 0.2, asian: 0.6, caucasian: 0.2, hair: 'short01', outfit: 'male_casualsuit05',
     hat: 'fedora_cocked', shoes: 'shoes06', eyes: 'grey', eyebrows: 'eyebrow007', facialHair: 'stubble', beardColor: '#1a1410',

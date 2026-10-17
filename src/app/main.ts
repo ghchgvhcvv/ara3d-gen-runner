@@ -349,7 +349,8 @@ function accessoriesPanel() {
     box.checked = params.accessories.includes(g.id);
     const row = el('label', { className: 'acc' }, box, g.label);
     wrap.append(row);
-    if (g.patterns.length > 1 || ['waist_sash', 'shoulder_drape'].includes(g.id)) {
+    // Colour controls for every accessory except beadwork (fixed bead palettes).
+    if (!g.patterns.includes('beadbands')) {
       const st = styleControls(() => (params.accessories.includes(g.id) ? g.id : ''));
       wrap.append(st);
     }

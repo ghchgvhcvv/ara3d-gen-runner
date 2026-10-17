@@ -75,11 +75,13 @@ src/app/       three.js viewer + catalog-driven UI
 
 Choose a full MakeHuman outfit, or **Separate pieces**:
 
-- **Tops:** tank top, fatigue shirt, techwear jacket, tattered shirt, sleeveless tunic, woven tunic (buba), or none (shirtless/topless).
-- **Bottoms:** briefs, cargo shorts, fatigue/techwear/tattered pants, loose trousers (sokoto), wrappers (knee or ankle length), Zulu hide aprons, a loincloth with front and back panels, or none.
-- **Accessories:** belts, utility belt, waist sash, shuka shoulder drape, crossed straps, amulet bandolier, leather armor, tactical vest, beaded collar, bead and cowrie necklaces, protective charms, brass cuffs, beaded and cowrie arm bands, arm guards, fur bands, fur headband with feathers, beaded headband, fila cap, combat helmet, holo visor, neon accents, goggles, arm wraps, wrist watch.
+- **Tops:** tank top, fatigue shirt, uniform shirt (short or long sleeves, with epaulettes), techwear jacket, tattered shirt, sleeveless tunic, woven tunic (buba), or none (shirtless/topless).
+- **Bottoms:** briefs, cargo shorts, fatigue/uniform/techwear/tattered pants, loose trousers (sokoto), wrappers (knee or ankle length), Zulu hide aprons, a loincloth with front and back panels, or none.
+- **Accessories:** belts, utility belt, waist sash, shuka shoulder drape, crossed straps, amulet bandolier, leather armor, tactical vest, reflective hi-vis vest, beret, beaded collar, bead and cowrie necklaces, protective charms, brass cuffs, beaded and cowrie arm bands, arm guards, fur bands, fur headband with feathers, beaded headband, fila cap, combat helmet, holo visor, neon accents, goggles, arm wraps, wrist watch.
 - **Footwear:** MakeHuman shoes, sandals, combat boots, or barefoot.
 - **Fabrics:** generated, tileable, with normal maps: kente, aso-oke, ankara, adire, shuka plaid, cowhide, leopard, camo, MOLLE, leather, techwear, tattered.
+
+Every piece has editable colours (Colour + Accent, e.g. epaulettes, badge, reflective tape) and, where it has several, a pattern choice. Presets include **Nigerian Police** (all-black uniform, short sleeves, beret, duty belt) and **FRSC** (beige short-sleeve shirt after the FRSC No. 5b dress, black trousers, maroon beret, service belt) officers. The uniform shirt comes in short and long sleeves, and a hi-vis reflective vest is available as an accessory.
 
 Garments are grown from the body surface or wrapped around it with convex-hull rings, so they fit every body shape.
 
