@@ -155,3 +155,5 @@ button.mini { padding: 2px 7px; font-size: 11px; }
 #anim-bar { flex-wrap: nowrap; }
 #anim-bar .anim-progress { position: absolute; left: 10px; right: 10px; bottom: 2px; flex-basis: auto; height: 2px; }
 main:has(#export-panel:not([hidden])) #anim-bar { left: calc((100% - 444px) / 2); max-width: calc(100% - 468px); }
+button.xp-cat { background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; }
+button.xp-cat:hover { color: var(--text); }

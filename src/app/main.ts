@@ -464,7 +464,12 @@ function renderExport() {
         play.addEventListener('click', () => playClip(c.id));
         grid.append(el('label', { className: 'xp-clip' }, box, el('span', { textContent: c.name }), el('small', { textContent: `${c.duration.toFixed(1)}s ${c.loop ? '↻' : ''}` }), play));
       }
-      kids.push(el('div', { className: 'xp-cat', textContent: cat }), grid);
+      const ids = CLIPS.filter((x) => x.category === cat).map((x) => x.id);
+      const allOn = ids.every((id) => s.clips.includes(id));
+      const catBtn = el('button', { className: 'xp-cat', textContent: `${cat} ${allOn ? '☑' : '☐'}`, title: allOn ? `Deselect all ${cat}` : `Select all ${cat}` });
+      catBtn.addEventListener('click', () =>
+        setExport({ clips: allOn ? s.clips.filter((c) => !ids.includes(c)) : [...new Set([...s.clips, ...ids])] }));
+      kids.push(catBtn, grid);
     }
     kids.push(el('div', { className: 'xp-row' },
       radio('embedded', s.packaging, 'One file, all clips inside', (v) => setExport({ packaging: v })),

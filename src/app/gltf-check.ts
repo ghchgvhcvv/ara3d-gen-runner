@@ -67,14 +67,17 @@ async function check(lib: AssetLibrary, config: string, p: HumanParams, loopSuff
     }
     action.reset().play();
     const frames = Math.round(c.duration * 30);
-    for (const f of [0, Math.round(frames / 3), Math.round((2 * frames) / 3), frames]) {
-      // Stay inside the clip (durations aren't always whole frames; loops wrap at the end).
-      const t = Math.min(f / 30, c.duration - (c.loop ? 1e-3 : 0));
+    // Compare at baked keyframes (between keys every player interpolates). Loops use their
+    // last keyframe before wrapping; durations aren't always whole frames.
+    for (const f of [0, Math.round(frames / 3), Math.round((2 * frames) / 3), c.loop ? frames - 1 : frames]) {
+      const t = Math.min(f / 30, c.duration);
       mixer.setTime(t);
       const want = animator.frame(c, t);
       bones.forEach((b, i) => {
         const q = new THREE.Quaternion(...want.rot[i]);
-        maxAngle = Math.max(maxAngle, (b.quaternion.angleTo(q) * 180) / Math.PI);
+        const err = (b.quaternion.angleTo(q) * 180) / Math.PI;
+        if (err > 1 && problems.length < 6) problems.push(`${c.id} t=${t.toFixed(3)} ${rig.bones[i].name}: ${err.toFixed(1)} deg`);
+        maxAngle = Math.max(maxAngle, err);
         const rp = want.rootPos.get(i);
         if (rp) maxRoot = Math.max(maxRoot, b.position.distanceTo(new THREE.Vector3(...rp)));
       });

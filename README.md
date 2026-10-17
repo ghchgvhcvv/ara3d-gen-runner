@@ -127,6 +127,9 @@ The character loads playing **Idle**, a rigged idle with relaxed arms. The anima
 | Actions | Jump, Fall, Punch, Hit reaction (one-shots) |
 | Emotes | Wave, Cheer (loops) |
 | Turns | Left/right 45° and 90°, full 360° (one-shots: hip yaw with stepping feet) |
+| Shooter | Rifle idle (low ready), aim idle, fire single, fire full-auto, reload, aiming walk / walk back / strafe left / strafe right, rifle run, sprint, crouch aim, crouch walk, throw grenade, death (fall forward) |
+
+Shooter clips are right-handed and contain no weapon: attach your rifle to `RightHand` in the engine. Both hands are placed with two-bone arm IK on a shared rifle line in chest space, so they hold the same (invisible) weapon on every body shape and skeleton. Fingers curl toward the palm, which is detected from each hand's joints, so fists and grips close correctly on A- and T-pose binds.
 
 Feet are grounded automatically (crouch, landing, steps), and switching clips in the viewer crossfades over 0.25 s.
 

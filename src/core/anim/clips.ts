@@ -25,12 +25,27 @@ export interface Root {
   lift?: number;
 }
 
+/**
+ * Hand IK target in "chest space": metres (at 1.8 m height) from the base of
+ * the neck, axes following the chest (+X character's left, +Y up, +Z forward).
+ * The shoulder joints sit about 0.1 m below and 0.2 m to each side of it.
+ */
+export interface HandTarget {
+  pos: [number, number, number];
+  /** Direction the elbow should point (chest space). */
+  pole: [number, number, number];
+  /** Optional hand orientation: direction from wrist to fingers, and palm normal (chest space). */
+  dir?: [number, number, number];
+  palm?: [number, number, number];
+}
+
 export interface Sample {
   bones: Record<string, Ch>;
   root: Root;
+  ik?: { Left?: HandTarget; Right?: HandTarget };
 }
 
-export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes';
+export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter';
 
 export interface Clip {
   id: string;
@@ -89,6 +104,32 @@ function fingers(out: Record<string, Ch>, curl = 12) {
   side(out, 'HandThumb2', [8, 0, 0], [8, 0, 0]);
 }
 
+/** Closed fists (fingers curl toward the palm, thumb across). */
+function fist(out: Record<string, Ch>, sides: ('Left' | 'Right')[] = ['Left', 'Right']) {
+  for (const s of sides) {
+    for (const f of ['Index', 'Middle', 'Ring', 'Pinky']) {
+      out[`${s}Hand${f}1`] = [75, 0, 0];
+      out[`${s}Hand${f}2`] = [95, 0, 0];
+      out[`${s}Hand${f}3`] = [60, 0, 0];
+    }
+    out[`${s}HandThumb1`] = [20, 0, 0];
+    out[`${s}HandThumb2`] = [35, 0, 0];
+    out[`${s}HandThumb3`] = [25, 0, 0];
+  }
+}
+
+/** Grip on a rifle: trigger finger along the guard (right), wrapped fingers. */
+function grip(out: Record<string, Ch>, side: 'Left' | 'Right', trigger = false, curl = 1) {
+  for (const f of ['Index', 'Middle', 'Ring', 'Pinky']) {
+    const t = trigger && f === 'Index';
+    out[`${side}Hand${f}1`] = [(t ? 20 : 60) * curl, 0, 0];
+    out[`${side}Hand${f}2`] = [(t ? 25 : 80) * curl, 0, 0];
+    out[`${side}Hand${f}3`] = [(t ? 15 : 50) * curl, 0, 0];
+  }
+  out[`${side}HandThumb2`] = [30 * curl, 0, 0];
+  out[`${side}HandThumb3`] = [20 * curl, 0, 0];
+}
+
 // --- Locomotion cycles ----------------------------------------------------------------
 
 interface Gait {
@@ -101,6 +142,7 @@ interface Gait {
   pelvisYaw: number;
   spineLean: number;
   armOut: number;
+  legIn: number;
 }
 
 const WALK: Gait = {
@@ -112,7 +154,8 @@ const WALK: Gait = {
   bob: [0, -0.018, -0.004, 0.012, 0, -0.018, -0.004, 0.012],
   pelvisYaw: 5,
   spineLean: 3,
-  armOut: 4,
+  armOut: 2,
+  legIn: 5,
 };
 
 const RUN: Gait = {
@@ -124,7 +167,8 @@ const RUN: Gait = {
   bob: [0, -0.04, -0.015, 0.035, 0, -0.04, -0.015, 0.035],
   pelvisYaw: 9,
   spineLean: 11,
-  armOut: 8,
+  armOut: 6,
+  legIn: 4,
 };
 
 function gait(g: Gait, p: number, reverse = false): Sample {
@@ -133,9 +177,10 @@ function gait(g: Gait, p: number, reverse = false): Sample {
   const thigh = c(g.thigh), knee = c(g.knee), foot = c(g.foot), arm = c(g.arm), elbow = c(g.elbow), bob = c(g.bob);
   const out: Record<string, Ch> = {};
   const L = ph, R = ph + 0.5;
-  side(out, 'UpLeg', [thigh(L), 0, 0], [thigh(R), 0, 0]);
+  // Thighs slightly adducted so the feet track under the body (the bind pose stands wide).
+  side(out, 'UpLeg', [thigh(L), 0, -g.legIn], [thigh(R), 0, -g.legIn]);
   side(out, 'Leg', [knee(L), 0, 0], [knee(R), 0, 0]);
-  side(out, 'Foot', [foot(L), 0, 0], [foot(R), 0, 0]);
+  side(out, 'Foot', [foot(L), 0, g.legIn * 0.8], [foot(R), 0, g.legIn * 0.8]);
   side(out, 'Arm', [arm(L), 0, g.armOut], [arm(R), 0, g.armOut]);
   side(out, 'ForeArm', [elbow(L), 0, 0], [elbow(R), 0, 0]);
   const twist = Math.sin(ph * Math.PI * 2) * g.pelvisYaw;
@@ -165,6 +210,7 @@ const idle: Clip = {
     side(out, 'Arm', [2 * Math.sin(a), 0, 3 + Math.sin(a)], [2 * Math.sin(a + 0.4), 0, 3 + Math.sin(a + 0.4)]);
     side(out, 'ForeArm', [12 + 2 * Math.sin(a), 0, 0], [12 + 2 * Math.sin(a + 0.4), 0, 0]);
     side(out, 'Leg', [-3, 0, 0], [-3, 0, 0]);
+    side(out, 'UpLeg', [0, 0, -3], [0, 0, -3]);
     fingers(out, 14);
     return { bones: out, root: { x: 0.008 * Math.sin(a * 0.5), y: 0.002 * Math.sin(a), ground: true } };
   },
@@ -315,8 +361,7 @@ const punch: Clip = {
     side(out, 'UpLeg', [14, 0, 4], [k([-6, -6, -10, -10, -6]), 0, 4]);
     side(out, 'Leg', [-20, 0, 0], [-8, 0, 0]);
     side(out, 'Foot', [6, 0, 0], [0, 0, 0]);
-    fingers(out, 85);
-    side(out, 'HandThumb2', [40, 0, 0], [40, 0, 0]);
+    fist(out);
     return { bones: out, root: { ground: true } };
   },
 };
@@ -344,10 +389,11 @@ const wave: Clip = {
   sample: (t) => {
     const a = (t / 2) * Math.PI * 2;
     const out: Record<string, Ch> = { Head: [2, -10, 6], Spine1: [0, -4, -3] };
-    side(out, 'Arm', [2, 0, 3], [15, 0, 135]);
-    side(out, 'ForeArm', [12, 0, 0], [35, 0, 25 * Math.sin(a * 2)]);
+    side(out, 'Shoulder', [0, 0, 0], [0, 0, 18]);
+    side(out, 'Arm', [2, 0, 3], [25, 0, 105]);
+    side(out, 'ForeArm', [12, 0, 0], [40, 0, 22 * Math.sin(a * 2)]);
     side(out, 'Hand', [0, 0, 0], [0, 0, 10 * Math.sin(a * 2 + 0.6)]);
-    fingers(out, 8);
+    fingers(out, 6);
     return { bones: out, root: { ground: true } };
   },
 };
@@ -358,14 +404,207 @@ const cheer: Clip = {
     const a = (t / 1.4) * Math.PI * 2;
     const pump = Math.sin(a * 2);
     const out: Record<string, Ch> = { Spine: [-6, 0, 0], Head: [-14, 0, 0] };
-    side(out, 'Arm', [10, 0, 150 + 8 * pump], [10, 0, 150 + 8 * pump]);
-    side(out, 'ForeArm', [25 + 15 * pump, 0, 0], [25 + 15 * pump, 0, 0]);
+    side(out, 'Shoulder', [0, 0, 22 + 3 * pump], [0, 0, 22 + 3 * pump]);
+    side(out, 'Arm', [15, 0, 118 + 8 * pump], [15, 0, 118 + 8 * pump]);
+    side(out, 'ForeArm', [30 + 20 * pump, 0, 0], [30 + 20 * pump, 0, 0]);
     side(out, 'Leg', [-8 - 6 * Math.abs(pump), 0, 0], [-8 - 6 * Math.abs(pump), 0, 0]);
     side(out, 'UpLeg', [5 + 4 * Math.abs(pump), 0, 0], [5 + 4 * Math.abs(pump), 0, 0]);
-    fingers(out, 85);
+    fist(out);
     return { bones: out, root: { ground: true, lift: 0.03 * Math.max(0, pump) } };
   },
 };
+
+// --- Shooter (rifle) -----------------------------------------------------------------------
+// Hands are placed by IK in chest space; the weapon itself is supplied by the game
+// (attach it to RightHand). Right-handed, rifle along +Z.
+
+type Hold = { Left: HandTarget; Right: HandTarget };
+const v = (x: number, y: number, z: number): [number, number, number] => [x, y, z];
+const lerp3 = (a: [number, number, number], b: [number, number, number], t: number) => v(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t);
+
+// Shouldered aim: stock in the right shoulder pocket, grip below the bore, support hand on the handguard.
+const AIM: Hold = {
+  Right: { pos: v(-0.13, -0.19, 0.22), pole: v(-1, -0.9, -0.2), dir: v(0.1, -0.55, 0.83), palm: v(1, 0, 0) },
+  Left: { pos: v(-0.01, -0.13, 0.5), pole: v(0.4, -1, 0), dir: v(-0.35, 0.2, 0.91), palm: v(0, 1, 0) },
+};
+// Low ready: same hold, muzzle angled down ~40 degrees.
+const READY: Hold = {
+  Right: { pos: v(-0.15, -0.36, 0.17), pole: v(-1, -0.6, -0.4), dir: v(0.1, -0.75, 0.65), palm: v(1, 0, 0) },
+  Left: { pos: v(0.03, -0.42, 0.4), pole: v(0.6, -1, 0), dir: v(-0.35, 0.05, 0.93), palm: v(0, 1, 0) },
+};
+// Sprint: rifle carried diagonally across the chest.
+const SPRINT: Hold = {
+  Right: { pos: v(-0.17, -0.42, 0.13), pole: v(-1, -0.5, -0.5), dir: v(0.3, -0.75, 0.55), palm: v(1, 0, 0) },
+  Left: { pos: v(0.12, -0.2, 0.27), pole: v(0.8, -1, 0), dir: v(-0.6, 0.35, 0.7), palm: v(0, 1, 0) },
+};
+
+/** Upper body for a rifle hold: shoulders square, head on the sights when aiming. */
+function rifleUpper(out: Record<string, Ch>, aiming: boolean, breathe = 0) {
+  out.Spine1 = [(aiming ? 4 : 2) + breathe, (out.Spine1?.[1] ?? 0), 0];
+  out.Spine2 = [(aiming ? 3 : 1) + breathe * 0.5, (out.Spine2?.[1] ?? 0), 0];
+  out.Neck = [aiming ? 6 : 0, aiming ? -6 : 0, 0];
+  out.Head = [aiming ? 10 : 4, aiming ? -8 : 0, aiming ? -4 : 0];
+  grip(out, 'Right', true);
+  grip(out, 'Left');
+}
+
+/** Bladed shooter stance (left foot forward). */
+function stance(out: Record<string, Ch>, crouch = false) {
+  if (crouch) {
+    side(out, 'UpLeg', [72, 0, 4], [65, 0, 2]);
+    side(out, 'Leg', [-105, 0, 0], [-120, 0, 0]);
+    side(out, 'Foot', [30, 0, 0], [40, 0, 0]);
+    out.Spine = [16, 0, 0];
+  } else {
+    side(out, 'UpLeg', [8, 0, -1], [-6, 0, 0]);
+    side(out, 'Leg', [-8, 0, 0], [-4, 0, 0]);
+    side(out, 'Foot', [2, 0, 0], [0, 0, 0]);
+  }
+}
+
+const hold = (h: Hold, recoil = 0): Sample['ik'] => ({
+  Right: { ...h.Right, pos: v(h.Right.pos[0], h.Right.pos[1] + recoil * 0.015, h.Right.pos[2] - recoil * 0.035) },
+  Left: { ...h.Left, pos: v(h.Left.pos[0], h.Left.pos[1] + recoil * 0.02, h.Left.pos[2] - recoil * 0.03) },
+});
+
+function rifleLoop(id: string, name: string, duration: number, legs: (t: number) => Sample | null, h: Hold, aiming: boolean, travel?: [number, number, number], crouch = false): Clip {
+  return {
+    id, name, category: 'Shooter', duration, loop: true, travel,
+    sample: (t) => {
+      const base = legs(t);
+      const out: Record<string, Ch> = {};
+      if (base) for (const [k, ch] of Object.entries(base.bones)) if (/(UpLeg|Leg|Foot|ToeBase|Hips|Spine$)/.test(k)) out[k] = ch;
+      if (!base) stance(out, crouch);
+      if (crouch && base) {
+        // Crouched stepping: deepen the knees on top of the gait.
+        for (const s of ['Left', 'Right']) {
+          out[`${s}UpLeg`] = [(out[`${s}UpLeg`]?.[0] ?? 0) * 0.5 + 62, 0, 4 * (s === 'Left' ? 1 : -1)];
+          out[`${s}Leg`] = [(out[`${s}Leg`]?.[0] ?? 0) * 0.5 - 100, 0, 0];
+          out[`${s}Foot`] = [(out[`${s}Foot`]?.[0] ?? 0) * 0.5 + 28, 0, 0];
+        }
+        out.Spine = [16, out.Spine?.[1] ?? 0, 0];
+      }
+      // Keep the chest (and the rifle) facing forward while the hips swing.
+      const hipYaw = out.Hips?.[1] ?? 0;
+      out.Spine1 = [0, -hipYaw * 0.6, 0];
+      out.Spine2 = [0, -hipYaw * 0.4, 0];
+      const breathe = Math.sin((t / duration) * Math.PI * 2) * (base ? 0 : 1);
+      rifleUpper(out, aiming, breathe);
+      return { bones: out, root: base ? { ...base.root, ground: true } : { ground: true }, ik: hold(h) };
+    },
+  };
+}
+
+const still = () => null;
+const gaitOf = (g: Gait, d: number, reverse = false) => (t: number) => gait(g, t / d, reverse);
+const strafeLegs = (left: boolean) => {
+  const c = strafe(left);
+  return (t: number) => c.sample(t);
+};
+const RIFLE_WALK: Gait = { ...WALK, arm: WALK.arm.map(() => 0), pelvisYaw: 3 };
+const RIFLE_RUN: Gait = { ...RUN, arm: RUN.arm.map(() => 0), pelvisYaw: 5, spineLean: 8 };
+const CROUCH_WALK: Gait = { ...WALK, thigh: WALK.thigh.map((x) => x * 0.8), knee: WALK.knee.map((x) => x * 0.6), bob: WALK.bob.map(() => 0) };
+
+const rifleFire = (auto: boolean): Clip => ({
+  id: auto ? 'rifle_fire_auto' : 'rifle_fire', name: auto ? 'Rifle fire (full auto)' : 'Rifle fire (single)', category: 'Shooter',
+  duration: auto ? 0.4 : 0.45, loop: auto,
+  sample: (t) => {
+    const out: Record<string, Ch> = {};
+    stance(out);
+    // Recoil kick: sharp rise, quick settle (4 shots per loop for auto).
+    const ph = auto ? (t % 0.1) / 0.1 : t / 0.45;
+    const kick = auto ? Math.exp(-ph * 5) * 0.8 : track([0, 0.04, 0.12, 0.45], [0, 1, 0.35, 0])(t);
+    rifleUpper(out, true);
+    out.Spine2 = [3 - 3 * kick, 0, 0];
+    out.Head = [10 - 3 * kick, -8, -4];
+    return { bones: out, root: { ground: true }, ik: hold(AIM, kick) };
+  },
+});
+
+const reload: Clip = {
+  id: 'rifle_reload', name: 'Rifle reload', category: 'Shooter', duration: 2.2, loop: false,
+  sample: (t) => {
+    const out: Record<string, Ch> = {};
+    stance(out);
+    rifleUpper(out, false);
+    // Rifle canted up a little; left hand: handguard -> magazine -> pouch -> magazine -> slap -> handguard.
+    const T = [0, 0.3, 0.6, 1.0, 1.35, 1.6, 1.75, 2.2];
+    const right = lerp3(READY.Right.pos, v(-0.13, -0.3, 0.24), track([0, 0.3, 1.9, 2.2], [0, 1, 1, 0])(t));
+    const mag = v(-0.05, -0.44, 0.3), pouch = v(0.13, -0.68, 0.1), slap = v(-0.04, -0.36, 0.28);
+    const pts = [READY.Left.pos, READY.Left.pos, mag, pouch, mag, slap, READY.Left.pos, READY.Left.pos];
+    const lp = v(track(T, pts.map((p) => p[0]))(t), track(T, pts.map((p) => p[1]))(t), track(T, pts.map((p) => p[2]))(t));
+    out.Head = [track([0, 0.3, 1.8, 2.2], [4, 22, 22, 4])(t), track([0, 0.3, 1.8, 2.2], [0, -10, -10, 0])(t), 0];
+    const open = track([0, 0.5, 0.65, 0.9, 1.0, 1.6, 1.75], [1, 1, 0.3, 0.3, 1, 1, 1])(t);
+    grip(out, 'Left', false, open);
+    return {
+      bones: out, root: { ground: true },
+      ik: {
+        Right: { ...READY.Right, pos: right },
+        Left: { pos: lp, pole: v(0.5, -1, -0.2), dir: v(-0.3, -0.2, 0.9), palm: v(-0.2, 1, 0) },
+      },
+    };
+  },
+};
+
+const grenade: Clip = {
+  id: 'throw_grenade', name: 'Throw grenade', category: 'Shooter', duration: 1.5, loop: false,
+  sample: (t) => {
+    const T = [0, 0.35, 0.7, 0.85, 1.05, 1.5];
+    const k = (vals: number[]) => track(T, vals)(t);
+    const out: Record<string, Ch> = {
+      Hips: [0, k([0, -15, -25, 10, 20, 0]), 0],
+      Spine1: [k([0, -5, -12, 10, 15, 0]), k([0, -15, -25, 15, 20, 0]), 0],
+      Head: [0, k([0, 10, 20, -10, -15, 0]), 0],
+    };
+    side(out, 'UpLeg', [k([6, 15, 20, 5, 0, 6]), 0, 0], [k([-4, -10, -15, 10, 15, -4]), 0, 0]);
+    side(out, 'Leg', [k([-6, -10, -15, -20, -10, -6]), 0, 0], [k([-4, -20, -25, -5, -5, -4]), 0, 0]);
+    side(out, 'Arm', [k([10, 50, 70, 40, 20, 10]), 0, k([4, 20, 25, 10, 5, 4])], [k([0, -20, -40, 110, 60, 0]), 0, k([4, 70, 95, 60, 20, 4])]);
+    side(out, 'ForeArm', [k([12, 20, 20, 15, 15, 12]), 0, 0], [k([12, 90, 120, 20, 30, 12]), 0, 0]);
+    side(out, 'Shoulder', [0, 0, 0], [0, 0, k([0, 8, 15, 10, 0, 0])]);
+    fingers(out, 14);
+    out.RightHandIndex1 = [k([14, 70, 70, 10, 10, 14]), 0, 0];
+    out.RightHandMiddle1 = [k([14, 70, 70, 10, 10, 14]), 0, 0];
+    out.RightHandRing1 = [k([14, 70, 70, 10, 10, 14]), 0, 0];
+    return { bones: out, root: { ground: true } };
+  },
+};
+
+const deathForward: Clip = {
+  id: 'death_forward', name: 'Death (fall forward)', category: 'Shooter', duration: 1.7, loop: false,
+  sample: (t) => {
+    const T = [0, 0.2, 0.55, 0.8, 0.95, 1.7];
+    const k = (vals: number[]) => track(T, vals)(t);
+    const out: Record<string, Ch> = {
+      Spine: [k([0, 15, 20, 5, 0, 0]), 0, 0], Spine1: [k([0, 10, 12, 4, 0, 0]), 0, 0],
+      Neck: [k([0, 15, 10, -10, -15, -20]), 0, 0], Head: [k([0, 10, 5, -10, -15, -10]), k([0, 0, 0, 20, 30, 35]), 0],
+    };
+    side(out, 'UpLeg', [k([0, 40, 60, 10, 0, -2]), 0, k([0, 2, 4, 6, 6, 6])], [k([0, 35, 55, 15, 4, 2]), 0, k([0, 2, 4, 8, 8, 8])]);
+    side(out, 'Leg', [k([0, -60, -90, -30, -10, -6]), 0, 0], [k([0, -55, -80, -35, -15, -10]), 0, 0]);
+    side(out, 'Foot', [k([0, 10, 20, -10, -30, -40]), 0, 0], [k([0, 10, 20, -10, -30, -35]), 0, 0]);
+    side(out, 'Arm', [k([0, 30, 70, 90, 75, 70]), 0, k([3, 10, 30, 40, 45, 45])], [k([0, 25, 60, 85, 80, 75]), 0, k([3, 10, 25, 35, 40, 40])]);
+    side(out, 'ForeArm', [k([12, 30, 40, 30, 20, 20]), 0, 0], [k([12, 25, 35, 30, 25, 20]), 0, 0]);
+    fingers(out, k([14, 30, 20, 15, 15, 15]));
+    return { bones: out, root: { drop: k([0, 0.2, 0.6, 1, 0.97, 1]), pitch: k([0, 10, 45, 88, 86, 88]), z: k([0, 0.05, 0.2, 0.42, 0.44, 0.44]) } };
+  },
+};
+
+const SHOOTER: Clip[] = [
+  rifleLoop('rifle_idle', 'Rifle idle (low ready)', 3, still, READY, false),
+  rifleLoop('rifle_aim', 'Rifle aim idle', 2.5, still, AIM, true),
+  rifleFire(false),
+  rifleFire(true),
+  reload,
+  rifleLoop('rifle_walk', 'Rifle walk (aiming)', 1.1, gaitOf(RIFLE_WALK, 1.1), AIM, true, [0, 0, 1.3]),
+  rifleLoop('rifle_walk_back', 'Rifle walk back (aiming)', 1.25, gaitOf(RIFLE_WALK, 1.25, true), AIM, true, [0, 0, -1.0]),
+  rifleLoop('rifle_strafe_left', 'Rifle strafe left (aiming)', 0.9, strafeLegs(true), AIM, true, [1.1, 0, 0]),
+  rifleLoop('rifle_strafe_right', 'Rifle strafe right (aiming)', 0.9, strafeLegs(false), AIM, true, [-1.1, 0, 0]),
+  rifleLoop('rifle_run', 'Rifle run', 0.72, gaitOf(RIFLE_RUN, 0.72), READY, false, [0, 0, 3.4]),
+  rifleLoop('rifle_sprint', 'Rifle sprint', 0.62, gaitOf({ ...RIFLE_RUN, spineLean: 16, thigh: RUN.thigh.map((x) => x * 1.15) }, 0.62), SPRINT, false, [0, 0, 5.2]),
+  rifleLoop('rifle_crouch_aim', 'Crouch aim idle', 2.5, still, AIM, true, undefined, true),
+  rifleLoop('rifle_crouch_walk', 'Crouch walk (aiming)', 1.2, gaitOf(CROUCH_WALK, 1.2), AIM, true, [0, 0, 0.8], true),
+  grenade,
+  deathForward,
+];
 
 export const CLIPS: Clip[] = [
   idle,
@@ -386,6 +625,7 @@ export const CLIPS: Clip[] = [
   turn('turn_right_45', 'Turn right 45°', -45),
   turn('turn_right_90', 'Turn right 90°', -90),
   turn('turn_360', 'Full turn 360°', 360),
+  ...SHOOTER,
 ];
 
 export const clipById = new Map(CLIPS.map((c) => [c.id, c]));
