@@ -103,6 +103,8 @@ export function hairLayers(hairstyle: string, facial: FacialHairId, color: strin
   const sa = isProceduralHair(hairstyle) ? scalpAlpha[hairstyle] : undefined;
   if (sa)
     layers.push({
+      key: `scalp:${hairstyle}:${color}:${beardColor}`,
+      bounds: [-99, 6.5, -99, 99, 99, 99],
       regions: [REGION.head, REGION.neck],
       paint(p): Paint {
         let m = scalpMask(p);
@@ -120,6 +122,8 @@ export function hairLayers(hairstyle: string, facial: FacialHairId, color: strin
   if (facial !== 'none') {
     const fa = facial === 'stubble' ? 0.5 : 0.72;
     layers.push({
+      key: `stubble:${facial}:${beardColor}`,
+      bounds: [-99, 5.9, 0, 99, 7.5, 99],
       regions: [REGION.head, REGION.neck],
       paint(p, region): Paint {
         const m = beardMask(p, facial, region);

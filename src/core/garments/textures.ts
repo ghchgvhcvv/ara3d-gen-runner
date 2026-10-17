@@ -21,14 +21,19 @@ function crc32(b: Uint8Array): number {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-export function encodePNG(w: number, h: number, rgba: Uint8Array, alpha: boolean): Uint8Array {
+/** PNG scanlines (filter byte 0 + pixels), from RGBA input. */
+function scanlines(w: number, h: number, rgba: Uint8Array, alpha: boolean): Uint8Array {
   const ch = alpha ? 4 : 3;
   const raw = new Uint8Array((w * ch + 1) * h);
   for (let y = 0; y < h; y++) {
-    raw[y * (w * ch + 1)] = 0;
-    for (let x = 0; x < w; x++)
-      for (let k = 0; k < ch; k++) raw[y * (w * ch + 1) + 1 + x * ch + k] = rgba[(y * w + x) * 4 + k];
+    const o = y * (w * ch + 1) + 1;
+    if (alpha) raw.set(rgba.subarray(y * w * 4, (y + 1) * w * 4), o);
+    else for (let x = 0; x < w; x++) for (let k = 0; k < 3; k++) raw[o + x * 3 + k] = rgba[(y * w + x) * 4 + k];
   }
+  return raw;
+}
+
+function pngFile(w: number, h: number, alpha: boolean, idat: Uint8Array): Uint8Array {
   const chunk = (type: string, data: Uint8Array) => {
     const out = new Uint8Array(12 + data.length);
     const dv = new DataView(out.buffer);
@@ -47,7 +52,7 @@ export function encodePNG(w: number, h: number, rgba: Uint8Array, alpha: boolean
   const parts = [
     new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
     chunk('IHDR', ihdr),
-    chunk('IDAT', zlibSync(raw, { level: 6 })),
+    chunk('IDAT', idat),
     chunk('IEND', new Uint8Array()),
   ];
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
@@ -57,6 +62,18 @@ export function encodePNG(w: number, h: number, rgba: Uint8Array, alpha: boolean
     o += p.length;
   }
   return out;
+}
+
+export function encodePNG(w: number, h: number, rgba: Uint8Array, alpha: boolean, level: 1 | 3 | 6 | 9 = 6): Uint8Array {
+  return pngFile(w, h, alpha, zlibSync(scanlines(w, h, rgba, alpha), { level }));
+}
+
+/** Same as encodePNG, using the platform's native zlib (CompressionStream) when available: several times faster on big images. */
+export async function encodePNGAsync(w: number, h: number, rgba: Uint8Array, alpha: boolean): Promise<Uint8Array> {
+  const raw = scanlines(w, h, rgba, alpha);
+  if (typeof CompressionStream === 'undefined') return pngFile(w, h, alpha, zlibSync(raw, { level: 3 }));
+  const z = await new Response(new Blob([raw as BlobPart]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer();
+  return pngFile(w, h, alpha, new Uint8Array(z));
 }
 
 // --- Noise (periodic, so textures tile) ----------------------------------------

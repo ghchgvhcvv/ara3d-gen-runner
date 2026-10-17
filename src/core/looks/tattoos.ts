@@ -119,6 +119,8 @@ export function tattooLayers(body: Body, ids: TattooId[], ink: string): Layer[] 
     switch (id) {
       case 'armband_l':
         layers.push({
+          key: `tattoo:${id}:${ink}`,
+          bounds: [0, -99, -99, 99, 99, 99],
           regions: [REGION.upperarm],
           paint(p, region, side) {
             if (side < 0) return null;
@@ -138,6 +140,8 @@ export function tattooLayers(body: Body, ids: TattooId[], ink: string): Layer[] 
         break;
       case 'forearm_l':
         layers.push({
+          key: `tattoo:${id}:${ink}`,
+          bounds: [0, -99, -99, 99, 99, 99],
           regions: [REGION.lowerarm],
           paint(p, region, side) {
             if (side < 0) return null;
@@ -149,6 +153,8 @@ export function tattooLayers(body: Body, ids: TattooId[], ink: string): Layer[] 
         break;
       case 'sleeve_r':
         layers.push({
+          key: `tattoo:${id}:${ink}`,
+          bounds: [-99, -99, -99, 0, 99, 99],
           regions: [REGION.upperarm, REGION.lowerarm],
           paint(p, region, side) {
             if (side > 0) return null;
@@ -167,6 +173,8 @@ export function tattooLayers(body: Body, ids: TattooId[], ink: string): Layer[] 
         break;
       case 'chest':
         layers.push({
+          key: `tattoo:${id}:${ink}`,
+          bounds: [-1.8, 4.2, 0.3, 1.8, 5.6, 9],
           regions: [REGION.torso],
           paint(p) {
             if (Math.abs(Math.atan2(p[0], p[2] - tz)) > 1.25 || p[1] < 4.3) return null;
@@ -177,6 +185,8 @@ export function tattooLayers(body: Body, ids: TattooId[], ink: string): Layer[] 
         break;
       case 'back':
         layers.push({
+          key: `tattoo:${id}:${ink}`,
+          bounds: [-1.8, 3.5, -9, 1.8, 5.9, 0.9],
           regions: [REGION.torso, REGION.neck],
           paint(p) {
             if (Math.abs(Math.atan2(p[0], p[2] - tz)) < 1.9 || p[1] < 3.6) return null;
@@ -187,6 +197,8 @@ export function tattooLayers(body: Body, ids: TattooId[], ink: string): Layer[] 
         break;
       case 'face_marks':
         layers.push({
+          key: `tattoo:${id}:${ink}`,
+          bounds: [-0.7, 6.6, 0.8, 0.7, 7.2, 9],
           regions: [REGION.head],
           paint(p) {
             if (p[2] < 0.9) return null;

@@ -47,6 +47,31 @@ export interface Looks {
 /** Which base faces carry paint, per overlay texture. */
 const paintedFaces = new WeakMap<AssetLibrary, Map<string, Uint8Array>>();
 
+/** Small LRU of generated geometry per library (a few head shapes x styles). */
+const geometry = new WeakMap<AssetLibrary, Map<string, unknown>>();
+function cached<T>(lib: AssetLibrary, key: string, make: () => T): T {
+  let m = geometry.get(lib);
+  if (!m) geometry.set(lib, (m = new Map()));
+  if (m.has(key)) {
+    const v = m.get(key) as T;
+    m.delete(key); // refresh LRU position
+    m.set(key, v);
+    return v;
+  }
+  const v = make();
+  m.set(key, v);
+  if (m.size > 12) m.delete(m.keys().next().value!);
+  return v;
+}
+
+/** Fingerprint of the morphed body (any slider that changes the shape changes it). */
+function coordsHash(c: Float32Array): string {
+  const u = new Uint32Array(c.buffer, c.byteOffset, c.length);
+  let h = 2166136261;
+  for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i], 16777619);
+  return (h >>> 0).toString(36) + c.length;
+}
+
 function hashKey(s: string): string {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
@@ -64,7 +89,7 @@ function tex(lib: AssetLibrary, id: string, make: () => TexOut): { map: string; 
   return { map, normalMap: lib.hasTexture(normalMap) ? normalMap : undefined };
 }
 
-export function buildLooks(lib: AssetLibrary, i: LooksInput): Looks {
+export async function buildLooks(lib: AssetLibrary, i: LooksInput): Promise<Looks> {
   const { p } = i;
   const out: Looks = { hair: [], beard: [], jewelry: [] };
   const base = baseBody(lib);
@@ -86,7 +111,7 @@ export function buildLooks(lib: AssetLibrary, i: LooksInput): Looks {
     let faces = cache.get(key);
     if (!faces || !lib.hasTexture(map)) {
       i.onStage?.(tattoos.length ? 'Painting tattoos' : 'Painting skin details');
-      const painted = paintOverlay(lib, layers, size);
+      const painted = await paintOverlay(lib, layers, size);
       lib.registerTexture(map, painted.png);
       cache.set(key, (faces = painted.faces));
     }
@@ -100,26 +125,31 @@ export function buildLooks(lib: AssetLibrary, i: LooksInput): Looks {
       out.overlay = [mesh, { name: 'Skin details', color: '#ffffff', roughness: 0.6, metalness: 0, alpha: 'blend', doubleSided: false, map }];
   }
 
-  // --- Geometry ---
-  if (proc || facial !== 'none') i.onStage?.('Growing hair');
+  // --- Geometry (cached per head shape: a tattoo or colour change doesn't regrow hair) ---
   const ctx: HeadCtx = {
     base, coords: i.coords, normals: i.normals, regions: base.regions, faceVerts: lib.base.arrays.faceVerts as Uint32Array,
     seed: p.seed, low: i.low,
   };
+  const shape = coordsHash(i.coords);
+  const grown = <T>(what: string, make: () => T): T =>
+    cached(lib, `${what}|${shape}|${p.seed}|${i.low}`, () => {
+      i.onStage?.('Growing hair');
+      return make();
+    });
   const hairMat = (name: string, t: { map: string; normalMap?: string }, extra: Partial<Material> = {}): Material => ({
     name, color: hairColor, roughness: 0.55, metalness: 0, alpha: 'opaque', doubleSided: false, ...t, ...extra,
   });
   if (proc === 'mohawk') {
-    const m = spikes(ctx);
+    const m = grown('spikes', () => spikes(ctx));
     if (m) out.hair.push([m, hairMat('Hair spikes', tex(lib, 'gen_hair_spike', spikeTexture))]);
   } else if (proc === 'cornrows') {
-    const m = cornrows(ctx);
+    const m = grown('cornrows', () => cornrows(ctx));
     if (m) out.hair.push([m, hairMat('Braids', tex(lib, 'gen_hair_braid', braidTexture))]);
   } else if (proc === 'box_braids') {
-    const m = boxBraids(ctx, i.neckY + 0.25);
+    const m = grown('box_braids', () => boxBraids(ctx, i.neckY + 0.25));
     if (m) out.hair.push([m, hairMat('Braids', tex(lib, 'gen_hair_braid', braidTexture))]);
   }
-  const beard = beardCards(ctx, facial);
+  const beard = facial === 'none' || facial === 'stubble' ? undefined : grown(`beard:${facial}`, () => beardCards(ctx, facial));
   if (beard)
     out.beard.push([beard, hairMat('Beard', tex(lib, 'gen_hair_card', hairCardTexture), { color: beardColor, alpha: 'mask', doubleSided: true, roughness: 0.75 })]);
 

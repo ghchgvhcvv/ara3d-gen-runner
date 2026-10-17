@@ -171,7 +171,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
     hiddenFaces[f] = coveredFaces[f] | assetDel[fv[f * 4]] | assetDel[fv[f * 4 + 1]] | assetDel[fv[f * 4 + 2]] | assetDel[fv[f * 4 + 3]];
   const neckIdx = lib.base.meta.joints['neck01____head'];
   const neckY = neckIdx.reduce((s, v) => s + coords[v * 3 + 1], 0) / neckIdx.length;
-  const looks = buildLooks(lib, { p, coords, normals: bodyNormals, fullBody, hidden: hiddenFaces, neckY, low, onStage: stage });
+  const looks = await buildLooks(lib, { p, coords, normals: bodyNormals, fullBody, hidden: hiddenFaces, neckY, low, onStage: stage });
   // Hair and earrings follow the skull only; beards also the jaw and neck.
   const skinTo = (m: PolyMesh, mask: (v: number) => boolean): PolyMesh =>
     bskin ? { ...m, skin: skinPart(m, bskin, new VertexGrid(coords, mask), 4) } : m;
