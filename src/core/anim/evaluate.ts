@@ -187,6 +187,7 @@ export class Animator {
         pos[i] = [p[0] + o[0], p[1] + o[1], p[2] + o[2]];
       }
       if (s.ik && g) this.solveIK(s, g, i, world, pos, ikDone);
+      if (s.thumbs && g) this.wrapThumb(s, g, i, world, pos);
     });
     B.forEach((b, i) => (rot[i] = b.parent < 0 ? world[i] : qmul(qconj(world[b.parent]), world[i])));
     if (r.ground || r.lift) {
@@ -196,6 +197,38 @@ export class Animator {
       for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + shift, p[2]]);
     }
     return { rot, rootPos };
+  }
+
+  /** Fist thumb: aim the thumb across the front of the index/middle fingers. */
+  private wrapThumb(s: Sample, g: string, i: number, world: Q[], pos: Vec3[]) {
+    const m = /^(Left|Right)HandThumb1$/.exec(g);
+    if (!m) return;
+    const side = m[1] as 'Left' | 'Right';
+    const amt = s.thumbs![side] ?? 0;
+    const hi = this.idx.get(`${side}Hand`), ii = this.idx.get(`${side}HandIndex1`), mi = this.idx.get(`${side}HandMiddle1`);
+    const t3 = this.idx.get(`${side}HandThumb3`);
+    const pl = this.palmLocal.get(side);
+    if (!amt || hi === undefined || ii === undefined || mi === undefined || t3 === undefined || !pl) return;
+    const B = this.rig.bones;
+    // Finger bases follow the hand rigidly (metacarpals don't animate).
+    const at = (k: number): Vec3 => {
+      const o = qrot(world[hi], qrot(qconj(this.restWorld[hi]), sub3(B[k].head, B[hi].head)));
+      return [pos[hi][0] + o[0], pos[hi][1] + o[1], pos[hi][2] + o[2]];
+    };
+    const I = at(ii), M = at(mi);
+    const n = qrot(world[hi], pl);
+    const f = norm(sub3(M, pos[hi]));
+    const k = this.scale;
+    // Over the middle phalanges of the curled index/middle fingers, in front of the palm.
+    const T: Vec3 = [0, 1, 2].map((d) => I[d] * 0.6 + M[d] * 0.4 + n[d] * 0.032 * k + f[d] * 0.012 * k) as Vec3;
+    const chain = qrot(qconj(this.restWorld[i]), sub3(B[t3].tail, B[i].head));
+    const q = qfromTo(qrot(world[i], chain), sub3(T, pos[i]));
+    // Partial wrap: scale the rotation angle.
+    const ang = 2 * Math.acos(Math.min(1, Math.abs(q[3]))) * amt;
+    const sn = Math.sqrt(Math.max(1e-12, 1 - q[3] * q[3]));
+    const sgn = q[3] < 0 ? -1 : 1;
+    const axis: Vec3 = [(q[0] / sn) * sgn, (q[1] / sn) * sgn, (q[2] / sn) * sgn];
+    world[i] = qmul(qaxis(axis, (ang * 180) / Math.PI), world[i]);
   }
 
   /** Two-bone arm IK + hand orientation, applied as the FK pass reaches Arm / ForeArm / Hand. */
@@ -230,7 +263,18 @@ export class Animator {
       const E: Vec3 = [S[0] + dir[0] * a + perp[0] * h, S[1] + dir[1] * a + perp[1] * h, S[2] + dir[2] * a + perp[2] * h];
       const chain = qrot(qconj(this.restWorld[i]), sub3(B[fore].head, B[i].head)); // elbow in the arm's local frame
       const cur = qrot(world[i], chain);
-      world[i] = qmul(qfromTo(cur, sub3(E, S)), world[i]);
+      const upper = norm(sub3(E, S));
+      world[i] = qmul(qfromTo(cur, upper), world[i]);
+      // Twist the upper arm about its own axis so its "front" (+Z, the side the elbow flexes
+      // toward) faces the wrist: the elbow then bends like a hinge instead of sideways.
+      const fw = sub3(T, E);
+      const fk = fw[0] * upper[0] + fw[1] * upper[1] + fw[2] * upper[2];
+      const want: Vec3 = [fw[0] - upper[0] * fk, fw[1] - upper[1] * fk, fw[2] - upper[2] * fk];
+      if (Math.hypot(...want) > 1e-4) {
+        const z = qrot(world[i], [0, 0, 1]);
+        const zk = z[0] * upper[0] + z[1] * upper[1] + z[2] * upper[2];
+        world[i] = qmul(qfromTo(norm([z[0] - upper[0] * zk, z[1] - upper[1] * zk, z[2] - upper[2] * zk]), norm(want)), world[i]);
+      }
       done[side] = { T: [S[0] + dir[0] * d, S[1] + dir[1] * d, S[2] + dir[2] * d] };
     } else if (part === 'ForeArm' && done[side]) {
       // pos[i] is now the elbow (its parent, the upper arm, was aimed at it).

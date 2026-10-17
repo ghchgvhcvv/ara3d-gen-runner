@@ -43,6 +43,8 @@ export interface Sample {
   bones: Record<string, Ch>;
   root: Root;
   ik?: { Left?: HandTarget; Right?: HandTarget };
+  /** 0..1: wrap the thumb across the front of the index/middle fingers (fists). */
+  thumbs?: { Left?: number; Right?: number };
 }
 
 export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter';
@@ -104,19 +106,22 @@ function fingers(out: Record<string, Ch>, curl = 12) {
   side(out, 'HandThumb2', [8, 0, 0], [8, 0, 0]);
 }
 
-/** Closed fists (fingers curl toward the palm, thumb across). */
+/**
+ * Closed fists: fingers curl into the palm; the thumb is wrapped across the
+ * front of the index/middle fingers by the evaluator (sample.thumbs).
+ */
 function fist(out: Record<string, Ch>, sides: ('Left' | 'Right')[] = ['Left', 'Right']) {
   for (const s of sides) {
     for (const f of ['Index', 'Middle', 'Ring', 'Pinky']) {
-      out[`${s}Hand${f}1`] = [75, 0, 0];
-      out[`${s}Hand${f}2`] = [95, 0, 0];
-      out[`${s}Hand${f}3`] = [60, 0, 0];
+      out[`${s}Hand${f}1`] = [80, 0, 0];
+      out[`${s}Hand${f}2`] = [100, 0, 0];
+      out[`${s}Hand${f}3`] = [65, 0, 0];
     }
-    out[`${s}HandThumb1`] = [20, 0, 0];
-    out[`${s}HandThumb2`] = [35, 0, 0];
+    out[`${s}HandThumb2`] = [15, 0, 0];
     out[`${s}HandThumb3`] = [25, 0, 0];
   }
 }
+const FISTS = { Left: 1, Right: 1 };
 
 /** Grip on a rifle: trigger finger along the guard (right), wrapped fingers. */
 function grip(out: Record<string, Ch>, side: 'Left' | 'Right', trigger = false, curl = 1) {
@@ -362,7 +367,7 @@ const punch: Clip = {
     side(out, 'Leg', [-20, 0, 0], [-8, 0, 0]);
     side(out, 'Foot', [6, 0, 0], [0, 0, 0]);
     fist(out);
-    return { bones: out, root: { ground: true } };
+    return { bones: out, root: { ground: true }, thumbs: FISTS };
   },
 };
 
@@ -385,32 +390,56 @@ const hit: Clip = {
 };
 
 const wave: Clip = {
-  id: 'wave', name: 'Wave', category: 'Emotes', duration: 2, loop: true,
+  id: 'wave', name: 'Wave', category: 'Emotes', duration: 1.6, loop: true,
   sample: (t) => {
-    const a = (t / 2) * Math.PI * 2;
-    const out: Record<string, Ch> = { Head: [2, -10, 6], Spine1: [0, -4, -3] };
-    side(out, 'Shoulder', [0, 0, 0], [0, 0, 18]);
-    side(out, 'Arm', [2, 0, 3], [25, 0, 105]);
-    side(out, 'ForeArm', [12, 0, 0], [40, 0, 22 * Math.sin(a * 2)]);
-    side(out, 'Hand', [0, 0, 0], [0, 0, 10 * Math.sin(a * 2 + 0.6)]);
-    fingers(out, 6);
-    return { bones: out, root: { ground: true } };
+    const a = (t / 1.6) * Math.PI * 2;
+    const sw = Math.sin(a * 2); // two waves per loop
+    const out: Record<string, Ch> = { Head: [0, -12, 4], Neck: [0, -4, 0], Spine1: [0, -6, -3], Spine2: [-2, 0, -2] };
+    side(out, 'Shoulder', [0, 0, 0], [0, 0, 12]);
+    side(out, 'Arm', [2, 0, 3], [0, 0, 0]);
+    side(out, 'ForeArm', [12, 0, 0], [0, 0, 0]);
+    side(out, 'Hand', [0, 0, 0], [0, 0, 0]);
+    fingers(out, 4);
+    side(out, 'HandThumb2', [0, 0, 0], [0, 0, 0]);
+    return {
+      bones: out,
+      root: { ground: true },
+      ik: {
+        // Hand beside the head, forearm upright; the wave comes from the shoulder and wrist.
+        Right: { pos: v(-0.36 - 0.05 * sw, 0.16, 0.06), pole: v(-0.6, -1, -0.2), dir: v(-0.25 * sw, 1, 0.05), palm: v(0, 0, 1) },
+      },
+    };
   },
 };
 
 const cheer: Clip = {
-  id: 'cheer', name: 'Cheer', category: 'Emotes', duration: 1.4, loop: true,
+  id: 'cheer', name: 'Cheer', category: 'Emotes', duration: 1.2, loop: true,
   sample: (t) => {
-    const a = (t / 1.4) * Math.PI * 2;
-    const pump = Math.sin(a * 2);
-    const out: Record<string, Ch> = { Spine: [-6, 0, 0], Head: [-14, 0, 0] };
-    side(out, 'Shoulder', [0, 0, 22 + 3 * pump], [0, 0, 22 + 3 * pump]);
-    side(out, 'Arm', [15, 0, 118 + 8 * pump], [15, 0, 118 + 8 * pump]);
-    side(out, 'ForeArm', [30 + 20 * pump, 0, 0], [30 + 20 * pump, 0, 0]);
-    side(out, 'Leg', [-8 - 6 * Math.abs(pump), 0, 0], [-8 - 6 * Math.abs(pump), 0, 0]);
-    side(out, 'UpLeg', [5 + 4 * Math.abs(pump), 0, 0], [5 + 4 * Math.abs(pump), 0, 0]);
+    const ph = (t / 1.2) * 2; // two fist pumps (and hops) per loop
+    const u = ph % 1;
+    const pump = Math.sin(Math.min(1, u / 0.35) * Math.PI * 0.5) * (u < 0.35 ? 1 : 1 - (u - 0.35) / 0.65); // fast up, slow down
+    const hop = Math.max(0, Math.sin(u * Math.PI * 2 - 0.3));
+    const out: Record<string, Ch> = {
+      Spine: [-5 - 3 * pump, 0, 0], Spine1: [-4 - 3 * pump, 0, 0], Spine2: [-3, 0, 0],
+      Neck: [-8, 0, 0], Head: [-14 - 6 * pump, 0, 0],
+    };
+    side(out, 'Shoulder', [0, 0, 14 + 8 * pump], [0, 0, 14 + 8 * pump]);
+    side(out, 'UpLeg', [10 * (1 - hop), 0, -2], [10 * (1 - hop), 0, -2]);
+    side(out, 'Leg', [-18 * (1 - hop) - 4, 0, 0], [-18 * (1 - hop) - 4, 0, 0]);
+    side(out, 'Foot', [8 * (1 - hop) - 12 * hop, 0, 0], [8 * (1 - hop) - 12 * hop, 0, 0]);
     fist(out);
-    return { bones: out, root: { ground: true, lift: 0.03 * Math.max(0, pump) } };
+    // Double fist pump: elbows bent out, fists driving up from head height to just above it.
+    const up = 0.06 + 0.24 * pump;
+    const wide = 0.36 - 0.04 * pump;
+    return {
+      bones: out,
+      root: { ground: true, lift: 0.06 * hop },
+      thumbs: FISTS,
+      ik: {
+        Left: { pos: v(wide, up, 0.12), pole: v(1, -0.5, -0.4), dir: v(0.1, 1, 0.15), palm: v(-0.3, 0, 1) },
+        Right: { pos: v(-wide, up, 0.12), pole: v(-1, -0.5, -0.4), dir: v(-0.1, 1, 0.15), palm: v(0.3, 0, 1) },
+      },
+    };
   },
 };
 
