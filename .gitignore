@@ -3,3 +3,4 @@ dist
 out
 vendor
 public/assets
+out/

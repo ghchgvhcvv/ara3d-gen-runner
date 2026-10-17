@@ -133,6 +133,7 @@ async function checkExportModes() {
       for (const clipMesh of [false, true])
         combos.push([`animated ${format} ${packaging}${clipMesh ? ' +mesh' : ''}`, { mode: 'animated', format, packaging, clipMesh, clips: ['walk', 'jump', 'turn_left_90'], rootMotion: true }]);
   combos.push(['animated no clips', { mode: 'animated', format: 'fbx', clips: [] }]);
+  combos.push(['loop suffix', { mode: 'animated', format: 'glb', clips: ['walk', 'jump'], loopSuffix: true }]);
   combos.push(['obj while rigged', { mode: 'animated', format: 'obj' }]);
   for (const [label, patch] of combos) {
     const plan = planExport(ch, { ...DEFAULT_EXPORT, ...patch });
@@ -153,6 +154,8 @@ async function checkExportModes() {
         const dv = new DataView(data.buffer, data.byteOffset);
         const j = JSON.parse(new TextDecoder().decode(data.subarray(20, 20 + dv.getUint32(12, true))));
         if ((j.animations?.length ?? 0) !== f.clips.length) fail(`export ${label}: ${f.path} animations ${j.animations?.length ?? 0}, planned ${f.clips.length}`);
+        if (label === 'loop suffix' && JSON.stringify(j.animations.map((a: { name: string }) => a.name)) !== JSON.stringify(['Walk-loop', 'Jump']))
+          fail(`export ${label}: names ${j.animations.map((a: { name: string }) => a.name)}`);
         if (f.meshless === !!j.meshes) fail(`export ${label}: ${f.path} mesh presence wrong`);
         if (f.rigged && !j.skins) fail(`export ${label}: ${f.path} missing skin (armature)`);
       }

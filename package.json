@@ -11,7 +11,8 @@
     "export": "tsx scripts/export-cli.ts",
     "test": "tsx scripts/selftest.ts",
     "setup-assets": "bash scripts/setup-assets.sh",
-    "build-assets": "tsx scripts/build-assets.ts"
+    "build-assets": "tsx scripts/build-assets.ts",
+    "test:gltf": "tsx scripts/gltf-check.ts"
   },
   "dependencies": {
     "fflate": "^0.8.3",

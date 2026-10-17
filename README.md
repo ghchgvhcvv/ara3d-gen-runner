@@ -107,6 +107,13 @@ The export bar always shows what you're about to get, for example `📦 FBX · R
 4. **Format:** GLB, FBX, OBJ (static only; disabled for rigged modes), or All formats (zip).
 5. **You will download:** the exact file name and every file in it, each with a description: triangles, textures, bones and pose, which clips, and skeleton-only or not. Notes explain any adjustment, for example that OBJ can't hold a rig.
 
+**Using the GLB in a game, without Blender:**
+- **Web (three.js, Babylon.js, PlayCanvas) and Godot 4** load the rigged, animated GLB directly. `npm run test:gltf` proves this for three.js: it exports through the real pipeline, loads the file with the stock `GLTFLoader` + `AnimationMixer` in headless Chrome, and checks every bone of every clip against the generator. Results for all four rig variants: within 0.15° and 0.2 mm, and the skinned mesh deforms.
+- **Godot:** tick *Mark looping clips in their names* in the Export panel. Clips are then named `Walk-loop` and so on, which Godot imports as looping automatically.
+- **Unity:** use **FBX**. It imports natively, the Mixamo bone names map to the Humanoid rig, and you tick *Loop Time* on looping clips. GLB in Unity needs the glTFast package.
+- **Unreal 5:** use **FBX**. The skeleton has no separate root bone above Hips (like Mixamo), so Unreal's root-motion setup may need one added.
+- **Every engine:** glTF has no loop flag, so set looping clips to loop. Loops play in place unless you export with Root motion.
+
 The plan is computed by `planExport()` (`src/export/plan.ts`) and executed by `runExport()`, so the download always matches the list. Zips also contain `params.json` (to regenerate the character), `rig.json`, a README listing the files, the licence and a preview image.
 
 ## Animation

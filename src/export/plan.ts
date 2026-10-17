@@ -23,6 +23,14 @@ export interface ExportSettings {
   clipMesh: boolean;
   /** Locomotion clips travel (root motion) instead of playing in place. */
   rootMotion: boolean;
+  /** Name looping clips "Walk-loop" so Godot imports them as looping. */
+  loopSuffix: boolean;
+}
+
+/** Clip name as written into exported files. */
+export function exportClipName(id: string, s: Pick<ExportSettings, 'loopSuffix'>): string {
+  const c = clipById.get(id)!;
+  return s.loopSuffix && c.loop ? `${c.name}-loop` : c.name;
 }
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -32,6 +40,7 @@ export const DEFAULT_EXPORT: ExportSettings = {
   packaging: 'embedded',
   clipMesh: false,
   rootMotion: false,
+  loopSuffix: false,
 };
 
 export const MODE_LABELS: Record<ExportMode, { title: string; blurb: string }> = {
@@ -96,7 +105,7 @@ export function planExport(ch: Character, s: ExportSettings): ExportPlan {
   const textures = new Set(ch.mesh.materials.flatMap((m) => [m.map, m.normalMap]).filter(Boolean)).size;
   const rig = ch.rig;
   const rigDesc = rig ? `${rig.bones.length}-bone ${RIG_LABELS[rig.type].split(' —')[0].split(' (')[0].toLowerCase()}, ${rig.restPose}-pose bind` : '';
-  const clipName = (id: string) => clipById.get(id)!.name;
+  const clipName = (id: string) => exportClipName(id, s);
   const clipList = (ids: string[]) => ids.map(clipName).join(', ');
   const separate = mode === 'animated' && s.packaging === 'separate';
 
@@ -131,6 +140,8 @@ export function planExport(ch: Character, s: ExportSettings): ExportPlan {
   }
   if (mode === 'animated' && s.rootMotion && clips.some((c) => clipById.get(c)!.travel))
     notes.push('Root motion on: walk/run/strafe clips move the hips forward or sideways instead of playing in place.');
+  if (mode === 'animated' && s.loopSuffix && clips.some((c) => clipById.get(c)!.loop))
+    notes.push('Looping clips are named "…-loop", which Godot imports as looping automatically.');
   if (separate && !s.clipMesh)
     notes.push('Clip files hold only the skeleton + animation (Unity "model@clip" convention): import the model first, then the clips onto its skeleton.');
 

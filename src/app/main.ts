@@ -471,6 +471,7 @@ function renderExport() {
       radio('separate', s.packaging, 'Zip: one file per clip', (v) => setExport({ packaging: v }))));
     if (s.packaging === 'separate') kids.push(check('Include the mesh in every clip file (bigger; off = skeleton + animation only)', s.clipMesh, (v) => setExport({ clipMesh: v })));
     kids.push(check('Root motion (walk / run / strafe travel instead of playing in place)', s.rootMotion, (v) => setExport({ rootMotion: v })));
+    kids.push(check('Mark looping clips in their names ("Walk-loop", auto-loops in Godot)', s.loopSuffix, (v) => setExport({ loopSuffix: v })));
   }
 
   // 4. Format

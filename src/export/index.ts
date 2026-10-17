@@ -7,7 +7,7 @@ import { quatOf } from '../core/rig/rig';
 import { exportFBX } from './fbx';
 import { exportGLB } from './glb';
 import { exportOBJ } from './obj';
-import { planExport, stemOf, type ExportPlan, type ExportSettings, type PlannedFile } from './plan';
+import { exportClipName, planExport, stemOf, type ExportPlan, type ExportSettings, type PlannedFile } from './plan';
 
 export * from './plan';
 
@@ -78,7 +78,7 @@ export async function runExport(lib: AssetLibrary, ch: Character, plan: ExportPl
       let b = baked.get(id);
       if (!b) {
         const c = clipById.get(id)!;
-        b = { name: c.name, loop: c.loop, ...animator!.bake(c, 30, { rootMotion: plan.settings.rootMotion }) };
+        b = { name: exportClipName(id, plan.settings), loop: c.loop, ...animator!.bake(c, 30, { rootMotion: plan.settings.rootMotion }) };
         baked.set(id, b);
       }
       return b;
@@ -130,6 +130,7 @@ export async function exportCharacter(
     packaging: 'embedded',
     clipMesh: false,
     rootMotion: false,
+    loopSuffix: false,
   };
   return runExport(lib, ch, planExport(ch, settings), extras);
 }
