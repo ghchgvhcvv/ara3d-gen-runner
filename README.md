@@ -43,7 +43,7 @@ Online character generators are convenient, but you rent them. 3D Gen is yours:
 Requirements: **Node 20+**, git, curl and unzip.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/3d-gen.git
+git clone https://github.com/olatunde85/3d-gen.git
 cd 3d-gen
 npm install
 npm run setup-assets   # one-time: downloads CC0 MakeHuman data (~420 MB) and builds public/assets (~85 MB)
