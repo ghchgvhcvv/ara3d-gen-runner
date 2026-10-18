@@ -9,5 +9,5 @@ under CC0 1.0 Universal (public domain dedication) in September 2020 by:
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
 
-Characters exported by 3d-gen may be used in commercial and non-commercial
+Characters exported by Ara 3D Gen may be used in commercial and non-commercial
 projects without attribution.

@@ -483,11 +483,11 @@ export function exportFBX(
         N('Second', [I(now.getSeconds())]),
         N('Millisecond', [I(0)]),
       ]),
-      N('Creator', [S('3d-gen character generator')]),
+      N('Creator', [S('Ara 3D Gen character generator')]),
     ]),
     N('FileId', [R(FILE_ID)]),
     N('CreationTime', [S(CREATION_TIME)]),
-    N('Creator', [S('3d-gen character generator')]),
+    N('Creator', [S('Ara 3D Gen character generator')]),
     N('GlobalSettings', [], [
       N('Version', [I(1000)]),
       N('Properties70', [], [

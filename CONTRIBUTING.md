@@ -1,4 +1,4 @@
-# Contributing to 3D Gen
+# Contributing to Ara 3D Gen
 
 Thanks for helping! Bug reports, garments, hairstyles, animations, presets and
 engine-integration notes are all welcome.

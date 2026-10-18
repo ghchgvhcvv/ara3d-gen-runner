@@ -7,7 +7,7 @@ labels: enhancement
 **What do you want to make?**
 <!-- The game, film or project and what is missing for it. -->
 
-**What would you like 3D Gen to do?**
+**What would you like Ara 3D Gen to do?**
 
 **References**
 <!-- Photos, concept art, or links to similar tools. For uniforms and cultural dress, sources for the details are very welcome. -->

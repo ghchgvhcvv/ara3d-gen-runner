@@ -52,7 +52,7 @@ function rigJson(ch: Character) {
 
 function readme(ch: Character, plan: ExportPlan): string {
   return [
-    `${ch.params.name} - exported by 3d-gen`,
+    `${ch.params.name} - exported by Ara 3D Gen`,
     '',
     `Export:  ${plan.summary}`,
     `Height:  ${(ch.height * 100).toFixed(0)} cm`,

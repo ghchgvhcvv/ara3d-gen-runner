@@ -165,7 +165,7 @@ export function exportGLB(
     }
   }
   const json = {
-    asset: { version: '2.0', generator: '3d-gen character generator' },
+    asset: { version: '2.0', generator: 'Ara 3D Gen character generator' },
     scene: 0,
     scenes: [{ name: 'Scene', nodes: sceneNodes }],
     nodes,
