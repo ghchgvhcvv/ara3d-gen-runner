@@ -10,7 +10,7 @@ Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 3
 
 <p align="center"><img src="docs/media/demo.gif" alt="Tattoos, recolouring, animations and weapons in the Ara 3D Gen web app" width="560"></p>
 
-<p align="center"><a href="https://res.cloudinary.com/api-dev-test/video/upload/v1792341109/3d-gen-demo_qqmafh.mp4"><img src="docs/media/video-poster.jpg" alt="Watch the Ara 3D Gen demo video (1:45)" width="720"></a><br><sub>▶ <a href="https://res.cloudinary.com/api-dev-test/video/upload/v1792341109/3d-gen-demo_qqmafh.mp4">Watch the 1:45 demo</a>: presets, sliders, hair and tattoos, animations, weapons, export and a real game.</sub></p>
+<p align="center"><a href="https://res.cloudinary.com/api-dev-test/video/upload/v1792362920/3d-gen-demo_nk2m1y.mp4"><img src="docs/media/video-poster.jpg" alt="Watch the Ara 3D Gen demo video (1:45)" width="720"></a><br><sub>▶ <a href="https://res.cloudinary.com/api-dev-test/video/upload/v1792362920/3d-gen-demo_nk2m1y.mp4">Watch the 1:45 demo</a>: presets, sliders, hair and tattoos, animations, weapons, export and a real game.</sub></p>
 
 
 ## Why self-hosted?
