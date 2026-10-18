@@ -12,12 +12,24 @@ import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { build } from 'vite';
 
+// Any Chromium-based browser works (Chrome, Chromium, Edge). Override with CHROME=/path/to/browser.
+const winDirs = [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA].filter((d): d is string => !!d);
 const CHROME = process.env.CHROME ?? [
+  // macOS
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  // Linux
   '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
   '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  '/snap/bin/chromium',
+  '/usr/bin/microsoft-edge',
+  // Windows
+  ...winDirs.flatMap((d) => [join(d, 'Google', 'Chrome', 'Application', 'chrome.exe'), join(d, 'Microsoft', 'Edge', 'Application', 'msedge.exe')]),
 ].find(existsSync);
-if (!CHROME) throw new Error('Chrome not found: set CHROME=/path/to/chrome');
+if (!CHROME) throw new Error('No Chrome, Chromium or Edge found: set CHROME=/path/to/browser');
 
 const DIST = join(import.meta.dirname, '../dist');
 await build({ logLevel: 'error' });

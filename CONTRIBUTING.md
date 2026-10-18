@@ -13,7 +13,7 @@ npm run setup-assets   # one-time: CC0 MakeHuman data -> public/assets
 npm run dev            # http://localhost:5173
 ```
 
-Requirements: Node 20+, git, curl and unzip (for the asset download). Blender is optional; it's only used by the `scripts/blender_*.py` render checks.
+Requirements: Node 20+ and git, on Windows, macOS or Linux. `npm run test:gltf` needs Chrome, Chromium or Edge (set `CHROME=/path/to/browser` if it isn't found). Blender is optional; it's only used by the `scripts/blender_*.py` render checks.
 
 ## Before you open a pull request
 

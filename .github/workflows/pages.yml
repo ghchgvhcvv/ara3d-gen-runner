@@ -1,10 +1,10 @@
-# Publishes the web app to GitHub Pages (Settings -> Pages -> Source: GitHub Actions).
+# Publishes the web app to GitHub Pages. Manual: enable Pages first (Settings -> Pages ->
+# Source: GitHub Actions), then run it from the Actions tab. To deploy on every push to main,
+# add `push: { branches: [main] }` under `on:`.
 name: Deploy demo to GitHub Pages
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ jobs:
           path: |
             vendor
             public/assets
-          key: assets-${{ runner.os }}-${{ hashFiles('scripts/build-assets.ts', 'scripts/setup-assets.sh') }}
+          key: assets-${{ runner.os }}-${{ hashFiles('scripts/build-assets.ts', 'scripts/setup-assets.ts') }}
       - run: npm run setup-assets
       - run: npm run build
         env:

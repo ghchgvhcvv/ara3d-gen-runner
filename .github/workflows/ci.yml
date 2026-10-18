@@ -7,7 +7,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +29,7 @@ jobs:
           path: |
             vendor
             public/assets
-          key: assets-${{ runner.os }}-${{ hashFiles('scripts/build-assets.ts', 'scripts/setup-assets.sh') }}
+          key: assets-${{ runner.os }}-${{ hashFiles('scripts/build-assets.ts', 'scripts/setup-assets.ts') }}
       - run: npm run setup-assets
 
       - name: Generate characters and validate every export format
