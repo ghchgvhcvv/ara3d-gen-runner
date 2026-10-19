@@ -38,6 +38,7 @@ Online character generators are convenient, but you rent them. Ara 3D Gen is you
 - **39 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set and melee, with optional root motion. One evaluator drives the preview and the exports, so what you see is what you export.
 - **Weapons:** rifle, pistol, sword and knife, held on the socket. Export them in the hand or as separate props.
 - **Exports you can trust:** an export panel that lists every file before you download it: static, rigged, or rigged + animations; one file or one per clip; Unity `model@clip` and Godot loop naming.
+- **Share:** one click gives a branded image of your character, a caption and a link that rebuilds the exact character in the app (no server or account needed), with buttons for X, Facebook, LinkedIn, WhatsApp, Reddit and Telegram, plus the system share sheet on phones.
 - **Tested:** `npm test` builds 240 characters and validates every format. `npm run test:gltf` loads the GLBs in three.js and checks every bone of every clip.
 
 ## Quick start

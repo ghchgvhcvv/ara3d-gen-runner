@@ -288,6 +288,29 @@ export class Viewer {
     if (this.helper) this.helper.visible = on;
   }
 
+  /** The canvas this viewer renders to (for share images). */
+  get canvasElement(): HTMLCanvasElement {
+    return this.canvas;
+  }
+
+  /** Where the character is on the canvas right now (device pixels, current pose and camera), with a margin. */
+  characterRect(margin = 0.08): { x: number; y: number; w: number; h: number } | null {
+    if (!this.mesh) return null;
+    this.mesh.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(this.mesh);
+    if (box.isEmpty()) return null;
+    const W = this.canvas.width, H = this.canvas.height;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      const v = new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).project(this.camera);
+      const px = ((v.x + 1) / 2) * W, py = ((1 - v.y) / 2) * H;
+      x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+    }
+    const mx = (x1 - x0) * margin, my = (y1 - y0) * margin;
+    x0 = Math.max(0, x0 - mx); y0 = Math.max(0, y0 - my); x1 = Math.min(W, x1 + mx); y1 = Math.min(H, y1 + my);
+    return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+  }
+
   async snapshot(): Promise<Uint8Array> {
     const blob = await new Promise<Blob | null>((res) => this.canvas.toBlob(res, 'image/png'));
     return blob ? new Uint8Array(await blob.arrayBuffer()) : new Uint8Array();

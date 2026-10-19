@@ -14,6 +14,7 @@ import { CLIPS } from '../src/core/anim/clips';
 import { nodeLibrary } from './node-assets';
 import { WEAPONS } from '../src/core/props/weapons';
 import { EARRINGS, FACIAL_HAIR, HAIRSTYLES, TATTOOS } from '../src/core/looks';
+import { decodeCharacter, encodeCharacter } from '../src/app/share';
 
 let failures = 0;
 const fail = (msg: string) => {
@@ -206,6 +207,17 @@ for (const g of GARMENTS) {
 }
 cases.push(['sandals', { ...DEFAULT_PARAMS, outfit: 'none', shoes: 'sandals' }]);
 cases.push(['barefoot', { ...DEFAULT_PARAMS, outfit: 'none', shoes: 'none', bottom: 'none' }]);
+
+// Share links: every preset and random character survives the round trip; garbage is rejected.
+{
+  const all = [...Object.entries(PRESETS).map(([name, p]) => ({ ...DEFAULT_PARAMS, ...p, name })), ...Array.from({ length: 20 }, (_, i) => randomParams(1000 + i, lib.catalog))];
+  for (const p of all) {
+    const back = decodeCharacter(encodeCharacter(p), p.detail);
+    if (JSON.stringify(back) !== JSON.stringify(p)) fail(`share link round trip changed ${p.name}`);
+  }
+  if (decodeCharacter('not-a-link', 'medium') !== null) fail('garbage share link accepted');
+  console.log(`${all.length} share links round-tripped`);
+}
 
 // Modesty rules: under-18 female characters always get a top; nobody is fully undressed. Tattoos are adult-only.
 {

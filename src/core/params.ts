@@ -1,8 +1,8 @@
 import type { Catalog } from './assets';
 import { rng } from './math';
 import type { RigType } from './rig/skeletons';
-import type { WeaponId } from './props/weapons';
-import type { EarringId, FacialHairId, Metal, TattooId } from './looks';
+import { WEAPONS, type WeaponId } from './props/weapons';
+import { EARRINGS, FACIAL_HAIR, TATTOOS, type EarringId, type FacialHairId, type Metal, type TattooId } from './looks';
 
 export const DETAILS = ['low', 'medium', 'high'] as const;
 export type Detail = (typeof DETAILS)[number];
@@ -325,4 +325,53 @@ export function randomParams(seed: number, cat: Catalog, base: HumanParams = DEF
     hat: r() < 0.15 && cat.hats.length ? pick(r, cat.hats).id : 'none',
     outfitTint: '#ffffff',
   };
+}
+
+/**
+ * Make untrusted params (e.g. from a shared link) safe to build: unknown keys are dropped,
+ * numbers are clamped, and enumerated options fall back to their defaults.
+ */
+export function sanitizeParams(raw: unknown, base: HumanParams = DEFAULT_PARAMS): HumanParams {
+  const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const out: HumanParams = { ...base };
+  const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+  const str = (v: unknown, d: string, max = 80) => (typeof v === 'string' && v.length <= max ? v : d);
+  const color = (v: unknown, d: string) => (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : d);
+  const oneOf = <T extends string>(v: unknown, opts: readonly T[], d: T): T => (opts.includes(v as T) ? (v as T) : d);
+  for (const k of ['gender', 'muscle', 'weight', 'height', 'proportions', 'african', 'asian', 'caucasian', 'breastSize', 'breastFirmness'] as const)
+    out[k] = num(src[k], 0, 1, base[k]);
+  // Same range as the app's age slider (12-90 years).
+  out.age = num(src.age, yearsToAge(12), 1, base.age);
+  out.seed = Math.round(num(src.seed, 0, 1e9, base.seed));
+  for (const k of ['name', 'skin', 'eyes', 'eyebrows', 'eyelashes', 'hair', 'outfit', 'top', 'bottom', 'shoes', 'hat'] as const) out[k] = str(src[k], base[k]);
+  for (const k of ['skinTint', 'hairTint', 'outfitTint', 'hairColor', 'beardColor', 'tattooInk'] as const) out[k] = color(src[k], base[k]);
+  if (typeof src.underwear === 'boolean') out.underwear = src.underwear;
+  if (typeof src.faceBones === 'boolean') out.faceBones = src.faceBones;
+  if (typeof src.animations === 'boolean') out.animations = src.animations;
+  out.detail = oneOf(src.detail, DETAILS, base.detail);
+  out.rig = oneOf(src.rig, ['game', 'game_lite', 'full', 'none'] as const, base.rig);
+  out.restPose = oneOf(src.restPose, ['A', 'T'] as const, base.restPose);
+  out.weapon = oneOf(src.weapon, WEAPONS, base.weapon);
+  out.facialHair = oneOf(src.facialHair, FACIAL_HAIR, base.facialHair);
+  out.earrings = oneOf(src.earrings, EARRINGS, base.earrings);
+  out.earringMetal = oneOf(src.earringMetal, ['gold', 'silver'] as const, base.earringMetal);
+  out.tattoos = Array.isArray(src.tattoos) ? [...new Set(src.tattoos.filter((t): t is TattooId => TATTOOS.includes(t as TattooId)))] : base.tattoos;
+  out.accessories = Array.isArray(src.accessories) ? src.accessories.filter((a): a is string => typeof a === 'string' && a.length <= 40).slice(0, 40) : base.accessories;
+  const mods: Record<string, number> = {};
+  if (src.modifiers && typeof src.modifiers === 'object')
+    for (const [k, v] of Object.entries(src.modifiers as Record<string, unknown>).slice(0, 400)) if (k.length <= 80) mods[k] = num(v, -1, 1, 0);
+  out.modifiers = mods;
+  const styles: HumanParams['garmentStyles'] = {};
+  if (src.garmentStyles && typeof src.garmentStyles === 'object')
+    for (const [k, v] of Object.entries(src.garmentStyles as Record<string, unknown>).slice(0, 60)) {
+      if (k.length > 40 || !v || typeof v !== 'object') continue;
+      const o = v as Record<string, unknown>;
+      styles[k] = {
+        ...(typeof o.pattern === 'string' && o.pattern.length <= 30 ? { pattern: o.pattern } : {}),
+        ...(typeof o.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(o.color) ? { color: o.color } : {}),
+        ...(typeof o.color2 === 'string' && /^#[0-9a-fA-F]{6}$/.test(o.color2) ? { color2: o.color2 } : {}),
+      };
+    }
+  out.garmentStyles = styles;
+  return out;
 }
