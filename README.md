@@ -4,13 +4,15 @@
 
 *Ara* is Yoruba for "body". Easy to run, free to use, no limits.
 
+**▶ Try it online: [ara3dgen.com](https://ara3dgen.com)**, or self-host it (below).
+
 Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 39 animations, and export **GLB, FBX, OBJ or a ZIP bundle**. It runs entirely on your machine, in the browser or headless from the command line, with no accounts, credits or limits.
 
 ![Presets: African warrior, Yoruba warrior, cyberpunk hacker, Dahomey warrior, FRSC officer, police officer, wasteland survivor, adventurer](docs/media/presets.jpg)
 
 <p align="center"><img src="docs/media/demo.gif" alt="Tattoos, recolouring, animations and weapons in the Ara 3D Gen web app" width="560"></p>
 
-<p align="center"><a href="https://res.cloudinary.com/api-dev-test/video/upload/v1792362920/3d-gen-demo_nk2m1y.mp4"><img src="docs/media/video-poster.jpg" alt="Watch the Ara 3D Gen demo video (1:45)" width="720"></a><br><sub>▶ <a href="https://res.cloudinary.com/api-dev-test/video/upload/v1792362920/3d-gen-demo_nk2m1y.mp4">Watch the 1:45 demo</a>: presets, sliders, hair and tattoos, animations, weapons, export and a real game.</sub></p>
+<p align="center"><a href="https://ara3dgen.com/media/ara-3d-gen-demo.mp4"><img src="docs/media/video-poster.jpg" alt="Watch the Ara 3D Gen demo video (1:45)" width="720"></a><br><sub>▶ <a href="https://ara3dgen.com/media/ara-3d-gen-demo.mp4">Watch the 1:45 demo</a>: presets, sliders, hair and tattoos, animations, weapons, export and a real game.</sub></p>
 
 
 ## Why self-hosted?

@@ -2,6 +2,7 @@
   "name": "3d-gen",
   "version": "0.1.0",
   "description": "Open-source, self-hosted generator for realistic, rigged and animated 3D human characters. Exports GLB, FBX and OBJ.",
+  "homepage": "https://ara3dgen.com",
   "license": "MIT",
   "private": true,
   "type": "module",
