@@ -1,0 +1,14 @@
+{
+  "name": "Ara 3D Gen",
+  "short_name": "Ara 3D Gen",
+  "description": "Free, open-source generator for realistic, rigged and animated 3D characters.",
+  "start_url": "/app/",
+  "display": "standalone",
+  "background_color": "#0f1116",
+  "theme_color": "#0f1116",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
