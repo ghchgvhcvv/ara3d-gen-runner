@@ -4,3 +4,4 @@ out
 vendor
 public/assets
 out/
+.DS_Store
