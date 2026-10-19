@@ -1,5 +1,6 @@
 /** Landing page: plays the demo video in a lightbox (loaded only when asked for). */
-const VIDEO = 'https://res.cloudinary.com/api-dev-test/video/upload/v1792362920/3d-gen-demo_nk2m1y.mp4';
+// Served with the site (CDN-cached), so viral traffic costs nothing extra.
+const VIDEO = `${import.meta.env.BASE_URL}media/ara-3d-gen-demo.mp4`;
 
 const modal = document.querySelector<HTMLDialogElement>('.video-modal')!;
 const video = modal.querySelector('video')!;

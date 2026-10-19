@@ -12,8 +12,8 @@ export default defineConfig({
         // Landing page at the site root; the generator app at /app/.
         main: resolve(import.meta.dirname, 'index.html'),
         app: resolve(import.meta.dirname, 'app/index.html'),
-        // Engine-side GLB check page (npm run test:gltf).
-        gltfCheck: resolve(import.meta.dirname, 'gltf-check.html'),
+        // Engine-side GLB check page: only built for `npm run test:gltf`, not for the public site.
+        ...(process.env.GLTF_CHECK ? { gltfCheck: resolve(import.meta.dirname, 'gltf-check.html') } : {}),
       },
     },
   },

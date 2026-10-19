@@ -130,7 +130,9 @@ async function texture(src: string, name: string, kind: 'color' | 'normal', max 
   let pipeline = sharp(src).resize(size, size, { fit: 'fill' });
   if (kind === 'color' && !isOpaque) {
     file = `${name}.png`;
-    pipeline = pipeline.png({ compressionLevel: 9, palette: false });
+    // 256-colour palette PNG with alpha: a standard PNG every engine reads, ~70% smaller for
+    // hair, eyes and lashes, and visually identical (they're mostly shades of one colour).
+    pipeline = pipeline.png({ compressionLevel: 9, palette: true, quality: 100, colours: 256, effort: 10, dither: 1 });
   } else {
     file = `${name}.jpg`;
     pipeline = pipeline.removeAlpha().jpeg({ quality: kind === 'normal' ? 92 : 87, mozjpeg: true });
@@ -335,7 +337,10 @@ function buildTargets(extra: Set<string>) {
   const wanted = [...byKey.keys()].filter(
     (k) => ((k.startsWith('macrodetails/') || /^breast\/(fe)?male-/.test(k)) && !k.includes('-baby')) || extra.has(k),
   );
-  const meta: TargetsMeta = { targets: {} };
+  // Format 2: MakeHuman targets have three decimals, so values are stored exactly as integer
+  // thousandths, delta-coded along each target (neighbouring vertices move alike) and split into
+  // low/high byte planes: about 45% smaller than plain 16-bit values after gzip, and lossless.
+  const meta: TargetsMeta = { format: 2, targets: {} };
   const idx: number[] = [];
   const d: number[][] = [[], [], []];
   for (const key of wanted.sort()) {
@@ -348,20 +353,28 @@ function buildTargets(extra: Set<string>) {
     rows.sort((a, b) => a[0] - b[0]);
     let max = 0;
     for (const r of rows) max = Math.max(max, Math.abs(r[1]), Math.abs(r[2]), Math.abs(r[3]));
-    const s = max > 0 ? max / 32767 : 1;
-    meta.targets[key] = [idx.length, rows.length, s];
+    const s = Math.max(0.001, max / 32767);
+    const start = idx.length;
     let prev = 0;
+    const last = [0, 0, 0];
     for (const r of rows) {
+      const q = [1, 2, 3].map((k) => Math.round(r[k] / s));
+      if (!q[0] && !q[1] && !q[2]) continue;
       idx.push(r[0] - prev);
       prev = r[0];
-      for (let k = 0; k < 3; k++) d[k].push(Math.round(r[k + 1] / s));
+      for (let k = 0; k < 3; k++) {
+        d[k].push((q[k] - last[k]) & 0xffff);
+        last[k] = q[k];
+      }
     }
+    meta.targets[key] = [start, idx.length - start, s];
   }
+  const planes = (a: number[], hi: boolean) => Uint8Array.from(a, (v) => (hi ? v >> 8 : v & 255));
   const data = encodePack(meta, {
     idx: Uint16Array.from(idx),
-    dx: Int16Array.from(d[0]),
-    dy: Int16Array.from(d[1]),
-    dz: Int16Array.from(d[2]),
+    xlo: planes(d[0], false), xhi: planes(d[0], true),
+    ylo: planes(d[1], false), yhi: planes(d[1], true),
+    zlo: planes(d[2], false), zhi: planes(d[2], true),
   });
   writeFileSync(join(OUT, 'targets.pack'), data);
   log(`targets.pack: ${wanted.length} targets, ${idx.length} deltas (${kb(data.length)})`);

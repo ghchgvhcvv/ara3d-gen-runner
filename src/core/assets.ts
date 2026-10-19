@@ -25,10 +25,31 @@ export interface BaseMeta {
 // arrays: positions (Float32, decimetres), faceVerts (Uint32, quads), faceUVs (Uint32), uvs (Float32)
 
 export interface TargetsMeta {
+  /** 2 = values delta-coded per target and stored as low/high byte planes (see decodeTargets). */
+  format?: number;
   /** name -> [entry offset, entry count, quantisation scale] */
   targets: Record<string, [number, number, number]>;
 }
-// arrays: idx (Uint16 index deltas), dx, dy, dz (Int16)
+// arrays (in memory): idx (Uint16 vertex-index deltas), dx, dy, dz (Int16 quantised deltas)
+
+/** Turn a format-2 targets pack back into idx/dx/dy/dz arrays (format 1 packs pass through). */
+export function decodeTargets(p: Pack<TargetsMeta>): Pack<TargetsMeta> {
+  if (p.meta.format !== 2) return p;
+  const a = p.arrays as Record<string, Uint8Array>;
+  const n = a.xlo.length;
+  const out: Int16Array[] = [new Int16Array(n), new Int16Array(n), new Int16Array(n)];
+  const planes = [[a.xlo, a.xhi], [a.ylo, a.yhi], [a.zlo, a.zhi]];
+  for (const [off, count] of Object.values(p.meta.targets))
+    for (let k = 0; k < 3; k++) {
+      const [lo, hi] = planes[k], o = out[k];
+      let v = 0;
+      for (let i = off; i < off + count; i++) {
+        v = (v + (lo[i] | (hi[i] << 8))) & 0xffff;
+        o[i] = (v << 16) >> 16;
+      }
+    }
+  return { meta: p.meta, arrays: { idx: p.arrays.idx, dx: out[0], dy: out[1], dz: out[2] } };
+}
 
 export type ProxyKind = 'body' | 'eyes' | 'eyebrows' | 'eyelashes' | 'hair' | 'outfit' | 'shoes' | 'hat' | 'teeth';
 
@@ -139,7 +160,7 @@ export class AssetLibrary {
     ]);
     this.catalog = JSON.parse(new TextDecoder().decode(cat));
     this.base = decodePack<BaseMeta>(base);
-    this.targets = decodePack<TargetsMeta>(targets);
+    this.targets = decodeTargets(decodePack<TargetsMeta>(targets));
     return this;
   }
 

@@ -1,0 +1,6 @@
+# Cloudflare Pages / Netlify response headers.
+# Character data, textures and media rarely change: let browsers cache them for a day.
+/assets/*
+  Cache-Control: public, max-age=86400
+/media/*
+  Cache-Control: public, max-age=86400

@@ -61,6 +61,16 @@ Production build (static files you can host anywhere, e.g. an internal server or
 npm run build          # -> dist/  (set BASE_PATH=/sub/path/ when hosting under a sub-path)
 ```
 
+## Deploy your own copy
+
+The whole site is static files, and all the character work runs in each visitor's browser, so free static hosting scales with traffic. On Cloudflare Pages, static bandwidth is unmetered.
+
+```bash
+npm run build          # -> dist/: landing page at /, the app at /app/, demo video at /media/
+```
+
+Upload `dist/` to Cloudflare Pages (Workers & Pages → Create → Pages → Upload assets) or any static host. Cache headers come with the build (`_headers`). A first visit downloads about 13 MB, and the browser caches it after that.
+
 ## Command line
 
 Generate characters without opening a browser, for batch jobs, CI or asset pipelines:

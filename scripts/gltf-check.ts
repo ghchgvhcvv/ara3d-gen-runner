@@ -32,6 +32,7 @@ const CHROME = process.env.CHROME ?? [
 if (!CHROME) throw new Error('No Chrome, Chromium or Edge found: set CHROME=/path/to/browser');
 
 const DIST = join(import.meta.dirname, '../dist');
+process.env.GLTF_CHECK = '1'; // include the check page in this build
 await build({ logLevel: 'error' });
 
 const TYPES: Record<string, string> = {
