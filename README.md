@@ -49,7 +49,7 @@ git clone https://github.com/olatunde85/3d-gen.git
 cd 3d-gen
 npm install
 npm run setup-assets   # one-time: downloads CC0 MakeHuman data (~420 MB) and builds public/assets (~85 MB)
-npm run dev            # open http://localhost:5173
+npm run dev            # open http://localhost:5173 (landing page; the app is at /app/)
 ```
 
 On Windows, run the same commands in PowerShell, Command Prompt or Git Bash.

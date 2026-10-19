@@ -3,42 +3,195 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ara 3D Gen: Character Generator</title>
-    <link rel="stylesheet" href="/src/app/style.css" />
+    <title>Ara 3D Gen: open-source 3D character generator</title>
+    <meta name="description" content="Open-source generator for realistic 3D human characters: rigged, animated and ready for Unity, Unreal, Godot, Blender and three.js. Runs in your browser. No accounts, credits or limits." />
+    <meta property="og:title" content="Ara 3D Gen: realistic 3D characters, rigged, animated, yours" />
+    <meta property="og:description" content="Open-source and self-hosted. Generate unlimited rigged, animated characters and export GLB, FBX or OBJ." />
+    <meta property="og:image" content="./docs/media/video-poster.jpg" />
+    <meta name="theme-color" content="#0f1116" />
+    <link rel="stylesheet" href="/src/landing/landing.css" />
   </head>
   <body>
-    <aside id="panel">
-      <header>
-        <h1>Ara 3D Gen <span>realistic humans</span></h1>
-        <div class="row">
-          <select id="preset"></select>
-          <button id="randomize" title="Random character">🎲 Randomize</button>
-        </div>
-        <div class="row">
-          <label class="grow">Name <input id="name" type="text" /></label>
-          <label>Seed <input id="seed" type="number" min="0" step="1" /></label>
-        </div>
-      </header>
-      <div id="controls"></div>
-    </aside>
+    <header class="nav">
+      <a class="brand" href="./"><span class="brand-mark">Ara</span> 3D Gen</a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#why">Why self-host</a>
+        <a href="#start">Get started</a>
+        <a href="https://github.com/olatunde85/3d-gen">GitHub</a>
+      </nav>
+      <a class="btn btn-primary btn-sm" href="app/">Launch app</a>
+    </header>
+
     <main>
-      <canvas id="viewport"></canvas>
-      <div id="loading"><span class="spin"></span><span id="loading-text">Loading character assets…</span></div>
-      <div id="busy-bar"></div>
-      <div id="stats"></div>
-      <div id="status" aria-live="polite"><span class="spin"></span><span id="status-text"></span></div>
-      <div id="view-tools">
-        <label><input type="checkbox" id="wireframe" /> Wireframe</label>
-        <label><input type="checkbox" id="skeleton" /> Skeleton</label>
-        <label><input type="checkbox" id="face" /> Face close-up</label>
-      </div>
-      <div id="anim-bar"></div>
-      <div id="export-panel" hidden></div>
-      <div id="export">
-        <button id="export-summary" title="Choose what to export">📦 <span id="export-summary-text">Export</span> ▾</button>
-        <button id="export-go" class="primary">⬇ Download</button>
-      </div>
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Open source · MIT licence · CC0 assets</p>
+          <h1>Realistic 3D characters.<br /><span class="grad">Rigged, animated, yours.</span></h1>
+          <p class="lede">
+            Shape a body, dress it, give it hair, tattoos and a weapon, pick from 39 animations and export to any engine.
+            It runs in your browser: no accounts, no credits, no limits.
+          </p>
+          <div class="cta">
+            <a class="btn btn-primary" href="app/">Launch the app <span aria-hidden="true">→</span></a>
+            <button class="btn btn-ghost" data-video type="button"><span class="play" aria-hidden="true"></span> Watch the demo · 1:45</button>
+          </div>
+          <ul class="facts">
+            <li><b>19</b> presets</li>
+            <li><b>39</b> animations</li>
+            <li><b>219</b> detail sliders</li>
+            <li><b>GLB · FBX · OBJ</b></li>
+          </ul>
+        </div>
+
+        <div class="gallery" aria-label="Presets: open any of them in the app">
+          <a class="card" href="app/#preset=The%20African%20Warrior"><img src="./docs/media/presets/african-warrior.jpg" alt="African warrior preset" loading="eager" /><span>African Warrior</span></a>
+          <a class="card" href="app/#preset=The%20Yoruba%20Warrior"><img src="./docs/media/presets/yoruba-warrior.jpg" alt="Yoruba warrior preset" /><span>Yoruba Warrior</span></a>
+          <a class="card" href="app/#preset=The%20Cyberpunk%20Hacker"><img src="./docs/media/presets/cyberpunk-hacker.jpg" alt="Cyberpunk hacker preset" /><span>Cyberpunk Hacker</span></a>
+          <a class="card" href="app/#preset=The%20Dahomey%20Warrior"><img src="./docs/media/presets/dahomey-warrior.jpg" alt="Dahomey warrior preset" /><span>Dahomey Warrior</span></a>
+          <a class="card" href="app/#preset=The%20FRSC%20Officer%20(Nigeria)"><img src="./docs/media/presets/frsc-officer.jpg" alt="FRSC officer preset" /><span>FRSC Officer</span></a>
+          <a class="card" href="app/#preset=The%20Police%20Officer%20(Nigeria)"><img src="./docs/media/presets/police-officer.jpg" alt="Nigerian police officer preset" /><span>Police Officer</span></a>
+          <a class="card" href="app/#preset=The%20Wasteland%20Survivor"><img src="./docs/media/presets/wasteland-survivor.jpg" alt="Wasteland survivor preset" /><span>Wasteland Survivor</span></a>
+          <a class="card" href="app/#preset=The%20Adventurer"><img src="./docs/media/presets/adventurer.jpg" alt="Adventurer preset" /><span>Adventurer</span></a>
+        </div>
+        <p class="gallery-hint">Click any character to open it in the app.</p>
+      </section>
+
+      <!-- Video -->
+      <section class="video-block">
+        <button class="video-poster" data-video type="button" aria-label="Play the 1 minute 45 second demo video">
+          <img src="./docs/media/video-poster.jpg" alt="" loading="lazy" />
+        </button>
+      </section>
+
+      <!-- Features -->
+      <section id="features" class="section">
+        <p class="eyebrow">What you get</p>
+        <h2>Everything between a blank scene and a playable character</h2>
+        <div class="features">
+          <article>
+            <div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><path d="M12 8v7m0 0-3 6m3-6 3 6M7 11h10"/></svg></div>
+            <h3>Realistic humans</h3>
+            <p>Built on the CC0 MakeHuman dataset: 900+ morph targets, 219 detail sliders, 20 photo-based skins and three detail levels from about 5k to 120k triangles.</p>
+          </article>
+          <article>
+            <div class="icon"><svg viewBox="0 0 24 24"><path d="M8 3 4 6l2 4 2-1v12h8V9l2 1 2-4-4-3-2 2h-4z"/></svg></div>
+            <h3>Clothing and culture</h3>
+            <p>Mix-and-match tops, bottoms, wrappers, uniforms and 30+ accessories. Kente, aso-oke, ankara, adire, camo and leather, all recolourable.</p>
+          </article>
+          <article>
+            <div class="icon"><svg viewBox="0 0 24 24"><path d="M6 10c0-4 2.7-7 6-7s6 3 6 7M6 10v3c0 4 2.7 8 6 8s6-4 6-8v-3M9 14c1 1.5 5 1.5 6 0"/></svg></div>
+            <h3>Hair, beards, tattoos</h3>
+            <p>Cornrows, box braids, a punk mohawk and buzz cuts. Stubble to full beards. Tattoos and earrings. All follow every head and body shape.</p>
+          </article>
+          <article>
+            <div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="4" r="1.6"/><circle cx="6" cy="11" r="1.6"/><circle cx="18" cy="11" r="1.6"/><circle cx="9" cy="20" r="1.6"/><circle cx="15" cy="20" r="1.6"/><path d="M12 6v6m0 0-5-1m5 1 5-1m-5 1-3 7m3-7 3 7"/></svg></div>
+            <h3>Automatic rigging</h3>
+            <p>Mixamo bone names for Unity Humanoid, Unreal and Godot. Game, lite or full skeleton, A- or T-pose, face bones and a weapon socket.</p>
+          </article>
+          <article>
+            <div class="icon"><svg viewBox="0 0 24 24"><path d="M5 4v16l14-8z"/></svg></div>
+            <h3>39 animations</h3>
+            <p>Walk, run, strafe, turns, jump, punch, wave, a full rifle and pistol shooter set and sword attacks, with optional root motion.</p>
+          </article>
+          <article>
+            <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 20 16 8m0 0 2-4 2 2-4 2M9 15l-3-3m-2 8 2-2"/></svg></div>
+            <h3>Weapons</h3>
+            <p>Rifle, pistol, sword and knife on a socket bone. The hands stay on the weapon in every pose. Export in the hand or as separate props.</p>
+          </article>
+          <article>
+            <div class="icon"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg></div>
+            <h3>Exports you can trust</h3>
+            <p>Static, rigged, or rigged + animations; one file or one per clip. The export panel lists every file before you download.</p>
+          </article>
+          <article>
+            <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM7 9l3 3-3 3m5 0h5"/></svg></div>
+            <h3>Batch command line</h3>
+            <p>Self-host it and generate hundreds of NPCs from a script. Every export carries its settings, so any character can be regenerated.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- Why self-host -->
+      <section id="why" class="section">
+        <p class="eyebrow">Why self-host</p>
+        <h2>Online generators rent you characters. This one is yours.</h2>
+        <div class="compare" role="table" aria-label="Online platforms compared with Ara 3D Gen">
+          <div class="row head" role="row"><span role="columnheader"></span><span role="columnheader">Online platforms</span><span role="columnheader">Ara 3D Gen</span></div>
+          <div class="row" role="row"><span role="rowheader">Cost</span><span>Subscriptions, credits or per-export fees</span><span class="yes">Free and open source</span></div>
+          <div class="row" role="row"><span role="rowheader">Limits</span><span>Monthly export or generation caps</span><span class="yes">Unlimited</span></div>
+          <div class="row" role="row"><span role="rowheader">Privacy</span><span>Your work lives on their servers</span><span class="yes">Runs on your machine</span></div>
+          <div class="row" role="row"><span role="rowheader">Offline</span><span>Needs a connection</span><span class="yes">Works offline when self-hosted</span></div>
+          <div class="row" role="row"><span role="rowheader">Automation</span><span>Web UI, sometimes a paid API</span><span class="yes">Batch CLI and TypeScript API</span></div>
+          <div class="row" role="row"><span role="rowheader">Ownership</span><span>Licence terms can change</span><span class="yes">CC0 assets, commercial use OK</span></div>
+          <div class="row" role="row"><span role="rowheader">Customising</span><span>What the vendor ships</span><span class="yes">Fork it: add garments, hair, animations</span></div>
+        </div>
+      </section>
+
+      <!-- Use cases -->
+      <section class="section">
+        <p class="eyebrow">Who it's for</p>
+        <h2>From indie games to research labs</h2>
+        <div class="uses">
+          <div><h3>Game developers</h3><p>NPCs, crowds and prototype heroes, ready for Unity, Unreal, Godot or the web.</p></div>
+          <div><h3>Animators and previs</h3><p>Rigged bodies to pose, animate and block out scenes.</p></div>
+          <div><h3>XR and simulation</h3><p>Diverse avatars for training, digital twins and virtual worlds.</p></div>
+          <div><h3>Educators and students</h3><p>Learn rigging, animation and engines with a real pipeline.</p></div>
+          <div><h3>Researchers</h3><p>Synthetic, diverse humans for computer-vision datasets.</p></div>
+        </div>
+      </section>
+
+      <!-- Showcase -->
+      <section class="section showcase">
+        <div class="showcase-img"><img src="./docs/media/abija-wara.jpg" alt="Abija Wara gameplay: the player runs through the Ibadan market road" loading="lazy" /></div>
+        <div class="showcase-copy">
+          <p class="eyebrow">Built for real games</p>
+          <h2>Abija Wara</h2>
+          <p>A third-person action shooter across Ibadan, Abeokuta and Old Oyo. Its player character was made with Ara 3D Gen: generated, rigged and animated, then dropped straight into the game.</p>
+        </div>
+      </section>
+
+      <!-- Engines -->
+      <section class="section engines">
+        <p class="eyebrow">Works with your tools</p>
+        <ul class="chips">
+          <li>Unity</li><li>Unreal Engine</li><li>Godot</li><li>Blender</li><li>three.js</li><li>Babylon.js</li><li>PlayCanvas</li><li>Mixamo</li>
+        </ul>
+      </section>
+
+      <!-- Get started -->
+      <section id="start" class="section start">
+        <div>
+          <p class="eyebrow">Get started</p>
+          <h2>Use it online, or own the whole pipeline</h2>
+          <p>The online app has every feature for making characters by hand. Self-host it for batch generation, offline use and your own garments, hair and animations. Works on Windows, macOS and Linux with Node 20+ and git.</p>
+          <div class="cta">
+            <a class="btn btn-primary" href="app/">Launch the app <span aria-hidden="true">→</span></a>
+            <a class="btn btn-ghost" href="https://github.com/olatunde85/3d-gen">View on GitHub</a>
+          </div>
+        </div>
+        <pre class="terminal" aria-label="Install commands"><code><span class="c"># one-time setup</span>
+git clone https://github.com/olatunde85/3d-gen.git
+cd 3d-gen
+npm install
+npm run setup-assets
+<span class="c"># run it</span>
+npm run dev</code></pre>
+      </section>
     </main>
-    <script type="module" src="/src/app/main.ts"></script>
+
+    <footer class="footer">
+      <div><b><span class="brand-mark">Ara</span> 3D Gen</b> · <i>Ara</i> is Yoruba for "body".</div>
+      <div>Code: MIT · Character data: CC0 (MakeHuman) · Your exports are yours.</div>
+      <div><a href="https://github.com/olatunde85/3d-gen">GitHub</a> · <a href="app/">Launch app</a></div>
+    </footer>
+
+    <dialog class="video-modal" aria-label="Demo video">
+      <button class="close" type="button" aria-label="Close video">✕</button>
+      <video controls playsinline preload="none" poster="./docs/media/video-poster.jpg"></video>
+    </dialog>
+
+    <script type="module" src="/src/landing/landing.ts"></script>
   </body>
 </html>

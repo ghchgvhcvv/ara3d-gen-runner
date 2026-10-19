@@ -10,7 +10,7 @@ git clone <your fork>
 cd 3d-gen
 npm install
 npm run setup-assets   # one-time: CC0 MakeHuman data -> public/assets
-npm run dev            # http://localhost:5173
+npm run dev            # http://localhost:5173 (landing page) and /app/ (the generator)
 ```
 
 Requirements: Node 20+ and git, on Windows, macOS or Linux. `npm run test:gltf` needs Chrome, Chromium or Edge (set `CHROME=/path/to/browser` if it isn't found). Blender is optional; it's only used by the `scripts/blender_*.py` render checks.
@@ -38,6 +38,7 @@ For visual changes (garments, hair, tattoos, animation), please attach a screens
 | Animation clips / evaluator | `src/core/anim/clips.ts`, `src/core/anim/evaluate.ts` |
 | Exporters | `src/export/` (`plan.ts` decides the files, `glb.ts`, `fbx.ts`, `obj.ts` write them) |
 | Web app | `src/app/` (UI in `main.ts`, three.js viewer, generation worker) |
+| Landing page | `index.html`, `src/landing/` (the app itself is `app/index.html`) |
 
 ### Adding a garment
 

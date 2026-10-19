@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ara 3D Gen: Character Generator</title>
+    <link rel="stylesheet" href="/src/app/style.css" />
+  </head>
+  <body>
+    <aside id="panel">
+      <header>
+        <h1><a href="../" title="Ara 3D Gen home">Ara 3D Gen</a> <span>realistic humans</span></h1>
+        <div class="row">
+          <select id="preset"></select>
+          <button id="randomize" title="Random character">🎲 Randomize</button>
+        </div>
+        <div class="row">
+          <label class="grow">Name <input id="name" type="text" /></label>
+          <label>Seed <input id="seed" type="number" min="0" step="1" /></label>
+        </div>
+      </header>
+      <div id="controls"></div>
+    </aside>
+    <main>
+      <canvas id="viewport"></canvas>
+      <div id="loading"><span class="spin"></span><span id="loading-text">Loading character assets…</span></div>
+      <div id="busy-bar"></div>
+      <div id="stats"></div>
+      <div id="status" aria-live="polite"><span class="spin"></span><span id="status-text"></span></div>
+      <div id="view-tools">
+        <label><input type="checkbox" id="wireframe" /> Wireframe</label>
+        <label><input type="checkbox" id="skeleton" /> Skeleton</label>
+        <label><input type="checkbox" id="face" /> Face close-up</label>
+      </div>
+      <div id="anim-bar"></div>
+      <div id="export-panel" hidden></div>
+      <div id="export">
+        <button id="export-summary" title="Choose what to export">📦 <span id="export-summary-text">Export</span> ▾</button>
+        <button id="export-go" class="primary">⬇ Download</button>
+      </div>
+    </main>
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>

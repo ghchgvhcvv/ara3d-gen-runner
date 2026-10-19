@@ -9,7 +9,9 @@ export default defineConfig({
     target: 'es2022',
     rollupOptions: {
       input: {
+        // Landing page at the site root; the generator app at /app/.
         main: resolve(import.meta.dirname, 'index.html'),
+        app: resolve(import.meta.dirname, 'app/index.html'),
         // Engine-side GLB check page (npm run test:gltf).
         gltfCheck: resolve(import.meta.dirname, 'gltf-check.html'),
       },
