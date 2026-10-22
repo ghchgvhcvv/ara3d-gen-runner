@@ -241,7 +241,7 @@ The character loads playing **Idle**, a rigged idle with relaxed arms. The anima
 
 Feet are grounded automatically (crouch, landing, steps), and switching clips in the viewer crossfades over 0.25 s.
 
-Clips are defined once (`src/core/anim/clips.ts`), in each bone's own frame (X = flex forward, Y = twist, Z = side), on an "animation rest" with relaxed arms and nearly straight elbows. One shared evaluator (`src/core/anim/evaluate.ts`) drives the viewer and both exporters, so one clip works on every skeleton type and on A- or T-pose binds, and the preview matches the export exactly.
+Clips are defined once (`src/core/anim/clips/`, one file per set), in each bone's own frame (X = flex forward, Y = twist, Z = side), on an "animation rest" with relaxed arms and nearly straight elbows. One shared evaluator (`src/core/anim/evaluate.ts`) drives the viewer and both exporters, so one clip works on every skeleton type and on A- or T-pose binds, and the preview matches the export exactly.
 
 Rig and animation options live in the Export panel: skeleton type, rest pose, facial bones, and which animations to include. With animations:
 - **GLB:** one glTF animation per clip (30 fps, rotation channels plus root translation).

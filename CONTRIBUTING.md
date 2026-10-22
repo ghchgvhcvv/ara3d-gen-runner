@@ -35,7 +35,7 @@ For visual changes (garments, hair, tattoos, animation), please attach a screens
 | Hair, beards, tattoos, earrings | `src/core/looks/` |
 | Weapons | `src/core/props/weapons.ts`, socket in `src/core/rig/socket.ts` |
 | Skeletons and skinning | `src/core/rig/` |
-| Animation clips / evaluator | `src/core/anim/clips.ts`, `src/core/anim/evaluate.ts` |
+| Animation clips / evaluator | `src/core/anim/clips/` (one file per set), `src/core/anim/evaluate.ts` |
 | Exporters | `src/export/` (`plan.ts` decides the files, `glb.ts`, `fbx.ts`, `obj.ts` write them) |
 | Web app | `src/app/` (UI in `main.ts`, three.js viewer, generation worker) |
 | Landing page | `index.html`, `src/landing/` (the app itself is `app/index.html`) |
@@ -50,7 +50,7 @@ selftest automatically builds every garment on two bodies.
 
 ### Adding an animation
 
-Add a `Clip` to `src/core/anim/clips.ts`. Channels are per bone, in degrees, in the bone's
+Animations live in `src/core/anim/clips/`, one file per set (`basic.ts`, `actions.ts`, `shooter.ts`, `vehicles.ts`…), with shared helpers in `helpers.ts`. Add a clip to the matching file, or start a new file for a new set, then list it in `index.ts` (that order is the order the app shows). Channels are per bone, in degrees, in the bone's
 own frame (X = flex forward, Y = twist, Z = side), and `side()` mirrors left/right. Hands
 can be placed with IK targets in chest space. The same evaluator drives the viewer and
 both exporters, so a clip works on every skeleton and bind pose automatically.
