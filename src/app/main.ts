@@ -226,6 +226,7 @@ controls.append(
   section('Expression', true,
     selectRow('Expression', EXPRESSIONS.map((e) => [e, EXPRESSION_LABELS[e]]), () => params.expression, (v) => set({ expression: v as ExpressionId })),
     el('div', { className: 'hint', textContent: 'The resting face in the viewer and in every exported animation. Characters also blink and glance around.' }),
+    selectRow('Teeth', [['none', 'None'], ...(cat.teeth ?? []).map((t): [string, string] => [t.id, t.id === 'teeth_base' ? 'Natural' : t.name.replace(/^Teeth shape /, 'Shape ')])], () => params.teeth, (v) => set({ teeth: v })),
   ),
   section('Facial hair', false,
     selectRow('Style', FACIAL_HAIR.map((f) => [f, FACIAL_HAIR_LABELS[f]]), () => params.facialHair, (v) => set({ facialHair: v as FacialHairId })),

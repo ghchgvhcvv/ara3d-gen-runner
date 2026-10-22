@@ -183,9 +183,10 @@ Tattoos, stubble and shaved scalps are painted into one RGBA "Skin details" text
 
 ## Faces and expressions
 
-Every character has **19 facial blend shapes** (morph targets) built from MakeHuman's CC0 expression data and blended by the character's ethnicity mix, so they fit every face. Names follow Apple's ARKit convention where they match: `eyeBlinkLeft/Right`, `eyeWideLeft/Right`, `eyeSquintLeft/Right`, `browDownLeft/Right`, `browInnerUp`, `browOuterUpLeft/Right`, `jawOpen`, `mouthSmile`, `mouthFrown`, `mouthPucker`, `mouthPress`, `mouthStretch`, `noseSneerLeft/Right`.
+Every character has **20 facial blend shapes** (morph targets) built from MakeHuman's CC0 expression data and blended by the character's ethnicity mix, so they fit every face. Names follow Apple's ARKit convention where they match: `eyeBlinkLeft/Right`, `eyeWideLeft/Right`, `eyeSquintLeft/Right`, `browDownLeft/Right`, `browInnerUp`, `browOuterUpLeft/Right`, `jawOpen`, `mouthSmile`, `mouthFrown`, `mouthPucker`, `mouthPress`, `mouthStretch`, `mouthUpperUp`, `noseSneerLeft/Right`.
 
 - **Expressions:** neutral, happy, laughing, angry, sad, crying, surprised, afraid, determined. The chosen expression is the resting face in the viewer and in every exported clip: the blend shapes' default weights in GLB and FBX, baked into the mesh for OBJ.
+- **Teeth and tongue:** MakeHuman's CC0 teeth (six variants, picked under *Expression*) and tongue. The upper teeth are fixed to the skull. The lower teeth and the tongue rotate with the jaw when `jawOpen` plays, and are skinned to the Jaw bone, so they also follow an animated jaw in an engine.
 - **A living face:** clips blink and glance around with the eye bones. Many also show the action on the face: effort when jumping or getting up, pain when hit, a squinting aiming eye with rifles and pistols, smiles when waving, cheering and laughing, sobbing when crying, and half-closed eyes after a death.
 - **Blinks close fully on every face:** each character's blink is calibrated so the lids just meet (MakeHuman's closure overshoots and folds the lid otherwise).
 - **Exports:** GLB has sparse morph targets with `extras.targetNames` and animated `weights`. FBX has a BlendShape deformer with one channel per shape and `DeformPercent` curves. Blender, Unity, Unreal, Godot and three.js read both.

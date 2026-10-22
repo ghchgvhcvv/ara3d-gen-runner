@@ -36,6 +36,7 @@ export const FACE_SHAPES: FaceShape[] = [
   { name: 'mouthStretch', units: [['mouth-retraction', 1]] },
   { name: 'noseSneerLeft', units: [['nose-left-elevation', 1]] },
   { name: 'noseSneerRight', units: [['nose-right-elevation', 1]] },
+  { name: 'mouthUpperUp', units: [['mouth-part-later', 1]] },
 ];
 export const FACE_SHAPE_NAMES = FACE_SHAPES.map((s) => s.name);
 export type FaceWeights = Partial<Record<string, number>>;
@@ -50,9 +51,9 @@ export const EXPRESSION_LABELS: Record<ExpressionId, string> = {
 export const EXPRESSION_WEIGHTS: Record<ExpressionId, FaceWeights> = {
   neutral: {},
   happy: { mouthSmile: 0.85, eyeSquintLeft: 0.35, eyeSquintRight: 0.35, browOuterUpLeft: 0.15, browOuterUpRight: 0.15 },
-  angry: { browDownLeft: 1, browDownRight: 1, mouthPress: 0.65, mouthFrown: 0.25, noseSneerLeft: 0.6, noseSneerRight: 0.6, eyeSquintLeft: 0.35, eyeSquintRight: 0.35 },
+  angry: { browDownLeft: 1, browDownRight: 1, mouthPress: 0.65, mouthUpperUp: 0.2, mouthFrown: 0.25, noseSneerLeft: 0.6, noseSneerRight: 0.6, eyeSquintLeft: 0.35, eyeSquintRight: 0.35 },
   sad: { browInnerUp: 0.85, mouthFrown: 0.75, eyeBlinkLeft: 0.18, eyeBlinkRight: 0.18 },
-  laughing: { mouthSmile: 1, jawOpen: 0.45, eyeSquintLeft: 0.65, eyeSquintRight: 0.65, browOuterUpLeft: 0.25, browOuterUpRight: 0.25 },
+  laughing: { mouthSmile: 1, jawOpen: 0.45, mouthUpperUp: 0.45, eyeSquintLeft: 0.65, eyeSquintRight: 0.65, browOuterUpLeft: 0.25, browOuterUpRight: 0.25 },
   crying: { browInnerUp: 1, mouthFrown: 0.85, mouthStretch: 0.35, jawOpen: 0.12, eyeSquintLeft: 0.55, eyeSquintRight: 0.55, noseSneerLeft: 0.2, noseSneerRight: 0.2 },
   surprised: { browInnerUp: 0.7, browOuterUpLeft: 0.8, browOuterUpRight: 0.8, eyeWideLeft: 0.75, eyeWideRight: 0.75, jawOpen: 0.35 },
   afraid: { browInnerUp: 0.9, eyeWideLeft: 0.6, eyeWideRight: 0.6, mouthStretch: 0.55, jawOpen: 0.15 },

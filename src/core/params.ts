@@ -77,6 +77,9 @@ export interface HumanParams {
   expression: ExpressionId;
   /** Export facial blend shapes (expressions, blinking). Off: the expression is baked into the mesh. */
   faceShapes: boolean;
+  /** Teeth variant id or 'none'; the tongue sits behind them. */
+  teeth: string;
+  tongue: boolean;
 }
 
 export const DEFAULT_PARAMS: HumanParams = {
@@ -125,6 +128,8 @@ export const DEFAULT_PARAMS: HumanParams = {
   weapon: 'none',
   expression: 'neutral',
   faceShapes: true,
+  teeth: 'teeth_base',
+  tongue: true,
 };
 
 /** MakeHuman age value <-> years. */
@@ -356,6 +361,8 @@ export function sanitizeParams(raw: unknown, base: HumanParams = DEFAULT_PARAMS)
   if (typeof src.faceBones === 'boolean') out.faceBones = src.faceBones;
   if (typeof src.animations === 'boolean') out.animations = src.animations;
   if (typeof src.faceShapes === 'boolean') out.faceShapes = src.faceShapes;
+  if (typeof src.tongue === 'boolean') out.tongue = src.tongue;
+  out.teeth = str(src.teeth, base.teeth, 40);
   out.expression = oneOf(src.expression, EXPRESSIONS, base.expression);
   out.detail = oneOf(src.detail, DETAILS, base.detail);
   out.rig = oneOf(src.rig, ['game', 'game_lite', 'full', 'none'] as const, base.rig);

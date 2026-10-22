@@ -47,7 +47,7 @@ const FACES: Record<string, FaceFn> = {
   cheer: constant({ mouthSmile: 0.9, jawOpen: 0.4, eyeSquintLeft: 0.3, eyeSquintRight: 0.3 }),
   laugh: (t, d) => {
     const ha = Math.abs(Math.sin((t / d) * Math.PI * 12));
-    return { mouthSmile: 1, jawOpen: 0.2 + 0.35 * ha, eyeSquintLeft: 0.6, eyeSquintRight: 0.6, browOuterUpLeft: 0.25, browOuterUpRight: 0.25 };
+    return { mouthSmile: 1, jawOpen: 0.2 + 0.35 * ha, mouthUpperUp: 0.3 + 0.2 * ha, eyeSquintLeft: 0.6, eyeSquintRight: 0.6, browOuterUpLeft: 0.25, browOuterUpRight: 0.25 };
   },
   cry: (t, d) => {
     const a = (t / d) * Math.PI * 2;
