@@ -52,6 +52,10 @@ export interface Sample {
   ik?: { Left?: HandTarget; Right?: HandTarget };
   /** 0..1: wrap the thumb across the front of the index/middle fingers (fists). */
   thumbs?: { Left?: number; Right?: number };
+  /** Facial blend-shape weights added on top of the character's expression (see core/face.ts). */
+  face?: Partial<Record<string, number>>;
+  /** Where the eyes look, degrees: [left (+) / right (-), up (+) / down (-)]. Replaces automatic glances. */
+  gaze?: [number, number];
 }
 
 export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter' | 'Vehicles' | 'Reactions';

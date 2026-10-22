@@ -13,6 +13,7 @@ export function boneFor(rig: RigType, name: string): string | undefined {
     Hips: 'root', Spine: 'spine04', Spine1: 'spine03', Spine2: 'spine02', Neck: 'neck01', Head: 'head',
     Shoulder: 'clavicle', Arm: 'upperarm01', ForeArm: 'lowerarm01', Hand: 'wrist',
     UpLeg: 'upperleg01', Leg: 'lowerleg01', Foot: 'foot',
+    Eye: 'eye', Jaw: 'jaw',
   };
   const f = /^Hand(Thumb|Index|Middle|Ring|Pinky)(\d)$/.exec(base);
   if (f) return `finger${['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'].indexOf(f[1]) + 1}-${f[2]}${side}`;

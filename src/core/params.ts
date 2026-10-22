@@ -3,6 +3,7 @@ import { rng } from './math';
 import type { RigType } from './rig/skeletons';
 import { WEAPONS, type WeaponId } from './props/weapons';
 import { EARRINGS, FACIAL_HAIR, TATTOOS, type EarringId, type FacialHairId, type Metal, type TattooId } from './looks';
+import { EXPRESSIONS, type ExpressionId } from './face';
 
 export const DETAILS = ['low', 'medium', 'high'] as const;
 export type Detail = (typeof DETAILS)[number];
@@ -72,6 +73,10 @@ export interface HumanParams {
   animations: boolean;
   /** Weapon held in the right hand (attached to the WeaponR socket). */
   weapon: WeaponId;
+  /** Resting facial expression (applied in the viewer and in every exported clip). */
+  expression: ExpressionId;
+  /** Export facial blend shapes (expressions, blinking). Off: the expression is baked into the mesh. */
+  faceShapes: boolean;
 }
 
 export const DEFAULT_PARAMS: HumanParams = {
@@ -114,10 +119,12 @@ export const DEFAULT_PARAMS: HumanParams = {
   outfitTint: '#ffffff',
   detail: 'medium',
   rig: 'game',
-  faceBones: false,
+  faceBones: true,
   restPose: 'A',
   animations: true,
   weapon: 'none',
+  expression: 'neutral',
+  faceShapes: true,
 };
 
 /** MakeHuman age value <-> years. */
@@ -348,6 +355,8 @@ export function sanitizeParams(raw: unknown, base: HumanParams = DEFAULT_PARAMS)
   if (typeof src.underwear === 'boolean') out.underwear = src.underwear;
   if (typeof src.faceBones === 'boolean') out.faceBones = src.faceBones;
   if (typeof src.animations === 'boolean') out.animations = src.animations;
+  if (typeof src.faceShapes === 'boolean') out.faceShapes = src.faceShapes;
+  out.expression = oneOf(src.expression, EXPRESSIONS, base.expression);
   out.detail = oneOf(src.detail, DETAILS, base.detail);
   out.rig = oneOf(src.rig, ['game', 'game_lite', 'full', 'none'] as const, base.rig);
   out.restPose = oneOf(src.restPose, ['A', 'T'] as const, base.restPose);

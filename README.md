@@ -6,7 +6,7 @@
 
 **▶ Try it online: [ara3dgen.com](https://ara3dgen.com)**, or self-host it (below).
 
-Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 60 animations, and export **GLB, FBX, OBJ or a ZIP bundle**. It runs entirely on your machine, in the browser or headless from the command line, with no accounts, credits or limits.
+Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 62 animations, and export **GLB, FBX, OBJ or a ZIP bundle**. It runs entirely on your machine, in the browser or headless from the command line, with no accounts, credits or limits.
 
 ![Presets: African warrior, Yoruba warrior, cyberpunk hacker, Dahomey warrior, FRSC officer, police officer, wasteland survivor, adventurer](docs/media/presets.jpg)
 
@@ -37,7 +37,7 @@ Online character generators are convenient, but you rent them. Ara 3D Gen is you
 - **Clothing:** MakeHuman outfits, or mix-and-match tops, bottoms, wrappers, uniforms and 30+ accessories. Generated fabrics (kente, aso-oke, ankara, adire, camo, leather…), all recolourable.
 - **Hair and looks:** MakeHuman hairstyles plus buzz cut, punk mohawk, cornrows and box braids. Stubble, mustache, goatee and beards. Tattoos. Earrings.
 - **Auto-rigging:** game rig (Mixamo bone names; Unity Humanoid / Unreal / Mixamo compatible), lite or full skeleton, A- or T-pose, optional face bones, a `WeaponR` socket.
-- **60 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. One evaluator drives the preview and the exports, so what you see is what you export.
+- **62 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. One evaluator drives the preview and the exports, so what you see is what you export.
 - **Weapons:** rifle, pistol, sword and knife, held on the socket. Export them in the hand or as separate props.
 - **Exports you can trust:** an export panel that lists every file before you download it: static, rigged, or rigged + animations; one file or one per clip; Unity `model@clip` and Godot loop naming.
 - **Share:** one click gives a branded image of your character, a caption and a link that rebuilds the exact character in the app (no server or account needed), with buttons for X, Facebook, LinkedIn, WhatsApp, Reddit and Telegram, plus the system share sheet on phones.
@@ -181,6 +181,17 @@ Tattoos, stubble and shaved scalps are painted into one RGBA "Skin details" text
 
 **Adult-only options:** topless and bottomless (no underwear) are only possible for characters aged 18+. Under-18 female characters always get a top, and every under-18 character keeps underwear. Bodies are anatomically neutral (no genital geometry).
 
+## Faces and expressions
+
+Every character has **19 facial blend shapes** (morph targets) built from MakeHuman's CC0 expression data and blended by the character's ethnicity mix, so they fit every face. Names follow Apple's ARKit convention where they match: `eyeBlinkLeft/Right`, `eyeWideLeft/Right`, `eyeSquintLeft/Right`, `browDownLeft/Right`, `browInnerUp`, `browOuterUpLeft/Right`, `jawOpen`, `mouthSmile`, `mouthFrown`, `mouthPucker`, `mouthPress`, `mouthStretch`, `noseSneerLeft/Right`.
+
+- **Expressions:** neutral, happy, laughing, angry, sad, crying, surprised, afraid, determined. The chosen expression is the resting face in the viewer and in every exported clip: the blend shapes' default weights in GLB and FBX, baked into the mesh for OBJ.
+- **A living face:** clips blink and glance around with the eye bones. Many also show the action on the face: effort when jumping or getting up, pain when hit, a squinting aiming eye with rifles and pistols, smiles when waving, cheering and laughing, sobbing when crying, and half-closed eyes after a death.
+- **Blinks close fully on every face:** each character's blink is calibrated so the lids just meet (MakeHuman's closure overshoots and folds the lid otherwise).
+- **Exports:** GLB has sparse morph targets with `extras.targetNames` and animated `weights`. FBX has a BlendShape deformer with one channel per shape and `DeformPercent` curves. Blender, Unity, Unreal, Godot and three.js read both.
+- **Blinks in exported clips** sit inside clips of 1.8 s or longer, so loops stay seamless. The live preview blinks on every clip. In an engine, short loops (walk, run) can get blinks from a separate face layer.
+- Turn off *Facial blend shapes* in the Export panel to leave them out; the expression is then baked into the mesh.
+
 ## Rigging
 
 Characters are rigged automatically, with no markers to place. The skeleton is built on the generated body's joints, and MakeHuman's CC0 skin weights are mapped onto it. Every clothing, hair and accessory vertex then gets weights: proxies through their reference vertices, garments through the base mesh or the nearest body vertices. Weights follow through subdivision.
@@ -188,7 +199,7 @@ Characters are rigged automatically, with no markers to place. The skeleton is b
 | Option | Choices |
 | --- | --- |
 | Skeleton | **Game rig** (65 bones, Mixamo names; retargets to Mixamo / Unity Humanoid / Unreal), **lite** (25 bones, no fingers), **full MakeHuman** (163 bones incl. face), none. Each also gets a `WeaponR` socket bone (below). |
-| Facial bones | jaw + eyes |
+| Facial bones | jaw + eyes (on by default; the eyes glance around in every clip) |
 | Rest pose | A-pose (natural) or T-pose (re-posed with linear blend skinning) |
 
 **Weapon socket:** every rig has a `WeaponR` bone under the right hand, centred in the closed grip. Its +Y axis runs out of the top of the fist (the grip and blade axis) and +Z toward the knuckles. Parenting a prop to it is how games usually attach weapons, so you can swap weapons in the engine without re-exporting the character.
@@ -229,7 +240,7 @@ The character loads playing **Idle**, a rigged idle with relaxed arms. The anima
 | Idle & stance | Idle, Crouch idle (loops) |
 | Locomotion | Walk, Run, Walk backwards, Strafe left/right (loops; in place, or with root motion) |
 | Actions | Jump, Fall, Punch, Hit reaction (one-shots); Jump start, Jump (in air) (loop), Jump land and Running jump, split for engine character controllers |
-| Emotes | Wave, Cheer (loops) |
+| Emotes | Wave, Cheer, Laugh, Cry (loops) |
 | Turns | Left/right 45° and 90°, full 360° (one-shots: hip yaw with stepping feet) |
 | Shooter | Pistol idle (low ready), pistol aim, pistol fire; rifle idle (low ready), aim idle, fire single, fire full-auto, reload, aiming walk / walk back / strafe left / strafe right, rifle run, sprint, crouch aim, crouch walk; throw grenade |
 | Reactions | Hit from front / back / left / right, knockdown, death (fall forward), death (fall backward), get up (from back), get up (from front) (one-shots). Knockdown ends where Get up (from back) starts, and Death (fall forward) ends where Get up (from front) starts, so they chain without a pop |

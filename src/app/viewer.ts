@@ -116,6 +116,15 @@ export class Viewer {
     geo.setAttribute('position', new THREE.BufferAttribute(m.positions, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(m.normals, 3));
     geo.setAttribute('uv', new THREE.BufferAttribute(m.uvs, 2));
+    if (m.morphs) {
+      // Facial blend shapes (offsets relative to the rest positions).
+      geo.morphAttributes.position = m.morphs.deltas.map((d, i) => {
+        const a = new THREE.BufferAttribute(d, 3);
+        a.name = m.morphs!.names[i];
+        return a;
+      });
+      geo.morphTargetsRelative = true;
+    }
     const total = m.groups.reduce((n, g) => n + g.indices.length, 0);
     const index = new Uint32Array(total);
     let o = 0;
@@ -172,11 +181,13 @@ export class Viewer {
       this.bones = [];
       this.mesh = new THREE.Mesh(geo, mats);
     }
+    // Resting expression (animation updates it per frame on rigged characters).
+    m.morphs?.defaults.forEach((x, i) => this.mesh!.morphTargetInfluences && (this.mesh!.morphTargetInfluences[i] = x));
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.scene.add(this.mesh);
     this.drawSkeleton();
-    this.animator = ch.rig && this.bones.length ? new Animator(ch.rig) : null;
+    this.animator = ch.rig && this.bones.length ? new Animator(ch.rig, ch.face) : null;
     this.tick();
 
     // Re-frame only when the height changes noticeably, so tweaking sliders doesn't jump the camera.
@@ -229,8 +240,8 @@ export class Viewer {
     if (this.clip) {
       const el = (now - this.clipStart) * this.speed;
       t = this.clip.loop ? el % this.clip.duration : Math.min(el, this.clip.duration);
-      frame = this.animator.frame(this.clip, t, { rootMotion: this.rootMotion });
-    } else frame = this.animator.bind();
+      frame = this.animator.frame(this.clip, t, { rootMotion: this.rootMotion, faceTime: now });
+    } else frame = { ...this.animator.bind(), morph: this.animator.restFace(now) };
     // Crossfade from the previous clip over 0.25 s.
     if (this.blendFrom) {
       const w = Math.min(1, (now - this.blendStart) / 0.25);
@@ -249,6 +260,7 @@ export class Viewer {
             const f = from.rootPos.get(i) ?? p;
             return [i, [f[0] + (p[0] - f[0]) * w, f[1] + (p[1] - f[1]) * w, f[2] + (p[2] - f[2]) * w]];
           })),
+          morph: frame.morph,
         };
       }
     }
@@ -260,6 +272,13 @@ export class Viewer {
     }
     frame.rot.forEach((q, i) => this.bones[i].quaternion.set(q[0], q[1], q[2], q[3]));
     for (const [i, p] of frame.rootPos) this.bones[i].position.set(p[0], p[1], p[2]);
+    const inf = this.mesh?.morphTargetInfluences;
+    if (inf) {
+      // Face: the clip's weights, or the resting expression in the bind pose; crossfaded like the bones.
+      const want = frame.morph ?? this.animator.face?.defaults ?? [];
+      const w = this.blendFrom ? Math.min(1, (now - this.blendStart) / 0.25) : 1;
+      want.forEach((x, i) => (inf[i] = inf[i] + (x - inf[i]) * w));
+    }
     this.onTick?.(this.clip, t);
   }
 

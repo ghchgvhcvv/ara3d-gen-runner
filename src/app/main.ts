@@ -7,6 +7,7 @@ import { CLIPS, clipById } from '../core/anim/clips';
 import { RIG_LABELS, type RigType } from '../core/rig/skeletons';
 import { DEFAULT_EXPORT, MODE_LABELS, planExport, type ExportSettings } from '../export';
 import { Engine } from './engine';
+import { EXPRESSIONS, EXPRESSION_LABELS, type ExpressionId } from '../core/face';
 import { decodeCharacter, defaultCaption, NETWORKS, shareCard, shareLink } from './share';
 import { Viewer } from './viewer';
 import { WEAPONS, WEAPON_LABELS, type WeaponId } from '../core/props/weapons';
@@ -222,6 +223,10 @@ controls.append(
     el('div', { className: 'sub', textContent: 'Eyelashes' }), picker(cat.eyelashes, 'eyelashes', NONE),
   ),
   section('Hair', true, hairPanel()),
+  section('Expression', true,
+    selectRow('Expression', EXPRESSIONS.map((e) => [e, EXPRESSION_LABELS[e]]), () => params.expression, (v) => set({ expression: v as ExpressionId })),
+    el('div', { className: 'hint', textContent: 'The resting face in the viewer and in every exported animation. Characters also blink and glance around.' }),
+  ),
   section('Facial hair', false,
     selectRow('Style', FACIAL_HAIR.map((f) => [f, FACIAL_HAIR_LABELS[f]]), () => params.facialHair, (v) => set({ facialHair: v as FacialHairId })),
     color('Beard colour', 'beardColor', false),
@@ -606,6 +611,7 @@ function renderExport() {
     kids.push(el('div', { className: 'ctl wide' }, el('span', { textContent: 'Rest pose' }),
       select([['A', 'A-pose (natural)'], ['T', 'T-pose (Mixamo / Unity Humanoid)']], params.restPose, (v) => set({ restPose: v as 'A' | 'T' }))));
     kids.push(check('Facial bones (jaw + eyes)', params.faceBones, (v) => set({ faceBones: v })));
+    kids.push(check('Facial blend shapes (expressions, blinking)', params.faceShapes, (v) => set({ faceShapes: v })));
     if (current.rig) kids.push(el('div', { className: 'rig-status', textContent: `✓ Auto-rigged: ${current.rig.bones.length} bones · ${current.rig.restPose}-pose bind · 4 weights per vertex` }));
   }
 

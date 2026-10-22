@@ -21,6 +21,9 @@ interface Report {
   maxAngleDeg: number;
   maxRootErrM: number;
   handMovedM: number;
+  /** Facial blend shapes in the file, and the largest weight difference from the generator. */
+  faceShapes: number;
+  maxFaceErr: number;
   problems: string[];
 }
 
@@ -52,9 +55,15 @@ async function check(lib: AssetLibrary, config: string, p: HumanParams, loopSuff
   const names = gltf.animations.map((a) => a.name);
   for (const c of CLIPS) if (!names.includes(exportClipName(c.id, settings))) problems.push(`missing animation "${exportClipName(c.id, settings)}"`);
 
-  const animator = new Animator(rig);
+  const animator = new Animator(rig, ch.face);
   const mixer = new THREE.AnimationMixer(gltf.scene);
-  let maxAngle = 0, maxRoot = 0;
+  let maxAngle = 0, maxRoot = 0, maxFace = 0;
+  const shapes = skinned?.morphTargetInfluences?.length ?? 0;
+  if (ch.face) {
+    const dict = skinned?.morphTargetDictionary ?? {};
+    if (shapes !== ch.face.names.length) problems.push(`${shapes} face shapes loaded, expected ${ch.face.names.length}`);
+    for (const n of ch.face.names) if (!(n in dict)) problems.push(`face shape "${n}" missing by name`);
+  }
   for (const c of CLIPS) {
     const anim = gltf.animations.find((a) => a.name === exportClipName(c.id, settings));
     if (!anim) continue;
@@ -81,6 +90,8 @@ async function check(lib: AssetLibrary, config: string, p: HumanParams, loopSuff
         const rp = want.rootPos.get(i);
         if (rp) maxRoot = Math.max(maxRoot, b.position.distanceTo(new THREE.Vector3(...rp)));
       });
+      if (want.morph && skinned?.morphTargetInfluences)
+        want.morph.forEach((w, s) => (maxFace = Math.max(maxFace, Math.abs(skinned!.morphTargetInfluences![s] - w))));
     }
   }
 
@@ -110,7 +121,8 @@ async function check(lib: AssetLibrary, config: string, p: HumanParams, loopSuff
   }
   if (maxAngle > 1) problems.push(`bone rotations differ by up to ${maxAngle.toFixed(2)} degrees`);
   if (maxRoot > 0.005) problems.push(`root position differs by up to ${maxRoot.toFixed(4)} m`);
-  return { config, ok: !problems.length, bones: bones.length, clips: gltf.animations.length, maxAngleDeg: +maxAngle.toFixed(4), maxRootErrM: +maxRoot.toFixed(5), handMovedM: +moved.toFixed(3), problems };
+  if (maxFace > 0.01) problems.push(`face weights differ by up to ${maxFace.toFixed(3)}`);
+  return { config, ok: !problems.length, bones: bones.length, clips: gltf.animations.length, maxAngleDeg: +maxAngle.toFixed(4), maxRootErrM: +maxRoot.toFixed(5), handMovedM: +moved.toFixed(3), faceShapes: shapes, maxFaceErr: +maxFace.toFixed(4), problems };
 }
 
 (async () => {
@@ -119,7 +131,7 @@ async function check(lib: AssetLibrary, config: string, p: HumanParams, loopSuff
     const base = { ...DEFAULT_PARAMS, ...PRESETS['The Adventurer'] };
     const reports = [
       await check(lib, 'game rig, A-pose', { ...base, rig: 'game', restPose: 'A' }, false),
-      await check(lib, 'game rig, T-pose, face bones, -loop names', { ...base, rig: 'game', restPose: 'T', faceBones: true }, true),
+      await check(lib, 'game rig, T-pose, angry, -loop names', { ...base, rig: 'game', restPose: 'T', faceBones: true, expression: 'angry' }, true),
       await check(lib, 'lite rig', { ...base, rig: 'game_lite' }, false),
       await check(lib, 'full MakeHuman rig', { ...base, rig: 'full' }, false),
     ];

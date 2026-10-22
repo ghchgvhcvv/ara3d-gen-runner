@@ -89,6 +89,6 @@ if (result.error) {
   process.exit(1);
 }
 for (const r of result.reports)
-  console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${r.config.padEnd(44)} bones=${r.bones} clips=${r.clips} maxRotErr=${r.maxAngleDeg}° maxRootErr=${r.maxRootErrM}m handMoved=${r.handMovedM}m${r.problems.length ? '\n     ' + r.problems.join('\n     ') : ''}`);
+  console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${r.config.padEnd(44)} bones=${r.bones} clips=${r.clips} maxRotErr=${r.maxAngleDeg}° maxRootErr=${r.maxRootErrM}m face=${r.faceShapes}/${r.maxFaceErr} handMoved=${r.handMovedM}m${r.problems.length ? '\n     ' + r.problems.join('\n     ') : ''}`);
 console.log(result.ok ? 'GLB loads and animates correctly in three.js' : 'PROBLEMS FOUND');
 process.exit(result.ok ? 0 : 1);
