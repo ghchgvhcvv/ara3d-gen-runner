@@ -355,6 +355,94 @@ const jump: Clip = {
   },
 };
 
+// Jump split into phases, the way engine character controllers need it: the controller plays
+// Jump start on takeoff, loops Jump (in air) for as long as the character is airborne, and plays
+// Jump land on touchdown. Vertical motion is left to the engine's physics (clips play in place).
+
+/** Airborne pose (also the end of Jump start and the start of Jump land). */
+function airPose(out: Record<string, Ch>, f = 0) {
+  out.Spine = [6 + 2 * f, 0, 0];
+  out.Spine1 = [2, 0, 0];
+  out.Head = [-4 - 2 * f, 0, 0];
+  side(out, 'UpLeg', [32 + 6 * f, 0, 5], [26 - 4 * f, 0, 5]);
+  side(out, 'Leg', [-52 - 8 * f, 0, 0], [-40 + 6 * f, 0, 0]);
+  side(out, 'Foot', [-14, 0, 0], [-10, 0, 0]);
+  side(out, 'Arm', [70 + 10 * f, 0, 22 + 6 * f], [64 - 8 * f, 0, 24 - 4 * f]);
+  side(out, 'ForeArm', [32, 0, 0], [28, 0, 0]);
+  fingers(out, 14);
+}
+
+const jumpStart: Clip = {
+  id: 'jump_start', name: 'Jump start', category: 'Actions', duration: 0.45, loop: false,
+  sample: (t) => {
+    const T = [0, 0.22, 0.36, 0.45];
+    const k = (v: number[]) => track(T, v)(t);
+    const out: Record<string, Ch> = {
+      Spine: [k([0, 24, -4, 6]), 0, 0], Spine1: [k([0, 8, -4, 2]), 0, 0], Head: [k([0, -14, 4, -4]), 0, 0],
+    };
+    side(out, 'UpLeg', [k([0, 58, -6, 32]), 0, 4], [k([0, 58, -6, 26]), 0, 4]);
+    side(out, 'Leg', [k([-3, -90, 0, -52]), 0, 0], [k([-3, -90, 0, -40]), 0, 0]);
+    side(out, 'Foot', [k([0, 30, -36, -14]), 0, 0], [k([0, 30, -36, -10]), 0, 0]);
+    // Arms swing back in the crouch, then drive up through takeoff.
+    side(out, 'Arm', [k([0, -42, 120, 70]), 0, k([4, 8, 14, 22])], [k([0, -42, 120, 64]), 0, k([4, 8, 14, 24])]);
+    side(out, 'ForeArm', [k([12, 15, 12, 32]), 0, 0], [k([12, 15, 12, 28]), 0, 0]);
+    fingers(out, 16);
+    // Feet stay down until takeoff; the last frames rise into the in-air pose.
+    return { bones: out, root: { ground: true, lift: k([0, 0, 0.04, 0.1]) } };
+  },
+};
+
+const jumpAir: Clip = {
+  id: 'jump_air', name: 'Jump (in air)', category: 'Actions', duration: 0.8, loop: true,
+  sample: (t) => {
+    const f = Math.sin((t / 0.8) * Math.PI * 2); // gentle float: legs and arms drift for balance
+    const out: Record<string, Ch> = {};
+    airPose(out, f * 0.5);
+    // Hips at standing height so the tucked feet clear the floor (the engine moves the body).
+    return { bones: out, root: { y: 0.1 } };
+  },
+};
+
+const jumpLand: Clip = {
+  id: 'jump_land', name: 'Jump land', category: 'Actions', duration: 0.6, loop: false,
+  sample: (t) => {
+    const T = [0, 0.12, 0.3, 0.6];
+    const k = (v: number[]) => track(T, v)(t);
+    const out: Record<string, Ch> = {
+      Spine: [k([6, 26, 12, 0]), 0, 0], Spine1: [k([2, 9, 4, 0]), 0, 0], Head: [k([-4, -14, -6, 0]), 0, 0],
+    };
+    side(out, 'UpLeg', [k([32, 60, 30, 0]), 0, k([5, 6, 4, 0])], [k([26, 60, 30, 0]), 0, k([5, 6, 4, 0])]);
+    side(out, 'Leg', [k([-52, -92, -45, -3]), 0, 0], [k([-40, -92, -45, -3]), 0, 0]);
+    side(out, 'Foot', [k([-14, 32, 14, 0]), 0, 0], [k([-10, 32, 14, 0]), 0, 0]);
+    side(out, 'Arm', [k([70, 34, 14, 0]), 0, k([22, 18, 8, 4])], [k([64, 34, 14, 0]), 0, k([24, 18, 8, 4])]);
+    side(out, 'ForeArm', [k([32, 30, 20, 12]), 0, 0], [k([28, 30, 20, 12]), 0, 0]);
+    fingers(out, 16);
+    // Touchdown on the first frame, then the knees absorb the impact.
+    return { bones: out, root: { ground: true, lift: k([0.04, 0, 0, 0]) } };
+  },
+};
+
+const jumpRunning: Clip = {
+  id: 'jump_running', name: 'Running jump', category: 'Actions', duration: 0.9, loop: false, travel: [0, 0, 3.6],
+  sample: (t) => {
+    // Take off from the left foot, stride through the air, land on the right and run on.
+    const T = [0, 0.12, 0.42, 0.68, 0.9];
+    const k = (v: number[]) => track(T, v)(t);
+    const out: Record<string, Ch> = {
+      Spine: [k([10, 14, 4, 16, 10]), 0, 0], Spine1: [k([4, 6, 0, 6, 4]), k([0, 4, 0, -3, 0]), 0], Head: [k([-8, -10, -2, -10, -8]), 0, 0],
+    };
+    // Left: push-off leg, extends behind. Right: drive knee up, reaches forward to land.
+    side(out, 'UpLeg', [k([10, -18, -24, -6, 10]), 0, 3], [k([10, 70, 52, 24, 10]), 0, 3]);
+    side(out, 'Leg', [k([-30, -8, -40, -70, -30]), 0, 0], [k([-30, -95, -30, -22, -30]), 0, 0]);
+    side(out, 'Foot', [k([0, -30, -10, 10, 0]), 0, 0], [k([0, 10, 0, 18, 0]), 0, 0]);
+    // Arms opposite the legs: right arm back with the left leg pushing, left arm drives forward.
+    side(out, 'Arm', [k([10, 55, 70, 30, 10]), 0, k([6, 12, 20, 10, 6])], [k([10, -35, -20, 20, 10]), 0, k([6, 10, 18, 8, 6])]);
+    side(out, 'ForeArm', [k([60, 70, 45, 60, 60]), 0, 0], [k([60, 40, 30, 70, 60]), 0, 0]);
+    fingers(out, 20);
+    return { bones: out, root: { ground: true, lift: k([0, 0.06, 0.34, 0.02, 0]) } };
+  },
+};
+
 const punch: Clip = {
   id: 'punch', name: 'Punch', category: 'Actions', duration: 0.9, loop: false,
   sample: (t) => {
@@ -1028,6 +1116,10 @@ export const CLIPS: Clip[] = [
   strafe(true),
   strafe(false),
   jump,
+  jumpStart,
+  jumpAir,
+  jumpLand,
+  jumpRunning,
   fall,
   punch,
   hit,
