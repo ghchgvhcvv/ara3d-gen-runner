@@ -6,7 +6,7 @@
 
 **▶ Try it online: [ara3dgen.com](https://ara3dgen.com)**, or self-host it (below).
 
-Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 52 animations, and export **GLB, FBX, OBJ or a ZIP bundle**. It runs entirely on your machine, in the browser or headless from the command line, with no accounts, credits or limits.
+Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 60 animations, and export **GLB, FBX, OBJ or a ZIP bundle**. It runs entirely on your machine, in the browser or headless from the command line, with no accounts, credits or limits.
 
 ![Presets: African warrior, Yoruba warrior, cyberpunk hacker, Dahomey warrior, FRSC officer, police officer, wasteland survivor, adventurer](docs/media/presets.jpg)
 
@@ -37,7 +37,7 @@ Online character generators are convenient, but you rent them. Ara 3D Gen is you
 - **Clothing:** MakeHuman outfits, or mix-and-match tops, bottoms, wrappers, uniforms and 30+ accessories. Generated fabrics (kente, aso-oke, ankara, adire, camo, leather…), all recolourable.
 - **Hair and looks:** MakeHuman hairstyles plus buzz cut, punk mohawk, cornrows and box braids. Stubble, mustache, goatee and beards. Tattoos. Earrings.
 - **Auto-rigging:** game rig (Mixamo bone names; Unity Humanoid / Unreal / Mixamo compatible), lite or full skeleton, A- or T-pose, optional face bones, a `WeaponR` socket.
-- **52 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. One evaluator drives the preview and the exports, so what you see is what you export.
+- **60 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. One evaluator drives the preview and the exports, so what you see is what you export.
 - **Weapons:** rifle, pistol, sword and knife, held on the socket. Export them in the hand or as separate props.
 - **Exports you can trust:** an export panel that lists every file before you download it: static, rigged, or rigged + animations; one file or one per clip; Unity `model@clip` and Godot loop naming.
 - **Share:** one click gives a branded image of your character, a caption and a link that rebuilds the exact character in the app (no server or account needed), with buttons for X, Facebook, LinkedIn, WhatsApp, Reddit and Telegram, plus the system share sheet on phones.
@@ -231,7 +231,8 @@ The character loads playing **Idle**, a rigged idle with relaxed arms. The anima
 | Actions | Jump, Fall, Punch, Hit reaction (one-shots); Jump start, Jump (in air) (loop), Jump land and Running jump, split for engine character controllers |
 | Emotes | Wave, Cheer (loops) |
 | Turns | Left/right 45° and 90°, full 360° (one-shots: hip yaw with stepping feet) |
-| Shooter | Pistol idle (low ready), pistol aim, pistol fire; rifle idle (low ready), aim idle, fire single, fire full-auto, reload, aiming walk / walk back / strafe left / strafe right, rifle run, sprint, crouch aim, crouch walk; throw grenade, death (fall forward) |
+| Shooter | Pistol idle (low ready), pistol aim, pistol fire; rifle idle (low ready), aim idle, fire single, fire full-auto, reload, aiming walk / walk back / strafe left / strafe right, rifle run, sprint, crouch aim, crouch walk; throw grenade |
+| Reactions | Hit from front / back / left / right, knockdown, death (fall forward), death (fall backward), get up (from back), get up (from front) (one-shots). Knockdown ends where Get up (from back) starts, and Death (fall forward) ends where Get up (from front) starts, so they chain without a pop |
 | Melee | Sword idle (guard), sword slash, sword block (in Actions) |
 | Vehicles | Drive car, sit (passenger), ride bicycle, ride motorcycle, ride horse (trot), paddle canoe, paddle kayak, row boat, drive boat (helm) (loops) |
 

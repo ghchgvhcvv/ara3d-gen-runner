@@ -156,24 +156,6 @@ const grenade: Clip = {
   },
 };
 
-const deathForward: Clip = {
-  id: 'death_forward', name: 'Death (fall forward)', category: 'Shooter', duration: 1.7, loop: false,
-  sample: (t) => {
-    const T = [0, 0.2, 0.55, 0.8, 0.95, 1.7];
-    const k = (vals: number[]) => track(T, vals)(t);
-    const out: Record<string, Ch> = {
-      Spine: [k([0, 15, 20, 5, 0, 0]), 0, 0], Spine1: [k([0, 10, 12, 4, 0, 0]), 0, 0],
-      Neck: [k([0, 15, 10, -10, -15, -20]), 0, 0], Head: [k([0, 10, 5, -10, -15, -10]), k([0, 0, 0, 20, 30, 35]), 0],
-    };
-    side(out, 'UpLeg', [k([0, 40, 60, 10, 0, -2]), 0, k([0, 2, 4, 6, 6, 6])], [k([0, 35, 55, 15, 4, 2]), 0, k([0, 2, 4, 8, 8, 8])]);
-    side(out, 'Leg', [k([0, -60, -90, -30, -10, -6]), 0, 0], [k([0, -55, -80, -35, -15, -10]), 0, 0]);
-    side(out, 'Foot', [k([0, 10, 20, -10, -30, -40]), 0, 0], [k([0, 10, 20, -10, -30, -35]), 0, 0]);
-    side(out, 'Arm', [k([0, 30, 70, 90, 75, 70]), 0, k([3, 10, 30, 40, 45, 45])], [k([0, 25, 60, 85, 80, 75]), 0, k([3, 10, 25, 35, 40, 40])]);
-    side(out, 'ForeArm', [k([12, 30, 40, 30, 20, 20]), 0, 0], [k([12, 25, 35, 30, 25, 20]), 0, 0]);
-    fingers(out, k([14, 30, 20, 15, 15, 15]));
-    return { bones: out, root: { drop: k([0, 0.2, 0.6, 1, 0.97, 1]), pitch: k([0, 10, 45, 88, 86, 88]), z: k([0, 0.05, 0.2, 0.42, 0.44, 0.44]) } };
-  },
-};
 
 // --- Pistol --------------------------------------------------------------------------------
 // Two-handed isosceles grip: arms extended, support hand wrapped around the firing hand.
@@ -248,5 +230,4 @@ export const RIFLE: Clip[] = [
   rifleLoop('rifle_crouch_aim', 'Crouch aim idle', 2.5, still, AIM, true, undefined, true),
   rifleLoop('rifle_crouch_walk', 'Crouch walk (aiming)', 1.2, gaitOf(CROUCH_WALK, 1.2), AIM, true, [0, 0, 0.8], true),
   grenade,
-  deathForward,
 ];

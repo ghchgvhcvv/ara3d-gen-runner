@@ -19,6 +19,8 @@ export interface Frame {
 
 /** Hips height when lying on the back (metres). */
 const LYING_HEIGHT = 0.12;
+/** Joints checked by the `floor` option (game-rig names; fingers are left out). */
+const BODY_JOINT = /^(Hips|Spine\d?|Neck|Head|(Left|Right)(Shoulder|Arm|ForeArm|Hand|UpLeg|Leg|Foot|ToeBase))$/;
 
 const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 /** Range of the rifle's support grip down the barrel from the pistol grip (metres; matches the rifle model). */
@@ -297,6 +299,18 @@ export class Animator {
       const low = this.feet.length ? Math.min(...this.feet.map((i) => pos[i][1])) : this.restFootY;
       const shift = (r.ground ? this.restFootY - low : 0) + (r.lift ?? 0) * k;
       for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + shift, p[2]]);
+      for (const p of pos) p[1] += shift;
+    }
+    if (r.floor) {
+      // Joints sit inside the body: keep hands and feet ~4 cm and the trunk, head and limbs ~7 cm
+      // clear of the floor (scaled to the body), lifting the whole body only if something is lower.
+      let need = 0;
+      this.names.forEach((n, i) => {
+        if (!n || !BODY_JOINT.test(n)) return;
+        const clear = (/(Hand|Foot|ToeBase)$/.test(n) ? 0.04 : 0.07) * k;
+        need = Math.max(need, clear - pos[i][1]);
+      });
+      if (need > 0) for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + need, p[2]]);
     }
     return { frame: { rot, rootPos }, world, pos };
   }

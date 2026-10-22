@@ -23,6 +23,8 @@ export interface Root {
   ground?: boolean;
   /** Metres added after grounding (jumps). */
   lift?: number;
+  /** Lift the body so no joint sinks below the floor (lying, crawling, getting up). */
+  floor?: boolean;
 }
 
 /**
@@ -52,7 +54,7 @@ export interface Sample {
   thumbs?: { Left?: number; Right?: number };
 }
 
-export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter' | 'Vehicles';
+export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter' | 'Vehicles' | 'Reactions';
 
 export interface Clip {
   id: string;
