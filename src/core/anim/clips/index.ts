@@ -10,6 +10,7 @@ import { cheer, wave } from './emotes';
 import { PISTOL, RIFLE } from './shooter';
 import { MELEE } from './melee';
 import { VEHICLES } from './vehicles';
+import { REACTIONS } from './reactions';
 export * from './types';
 
 export const CLIPS: Clip[] = [
@@ -28,6 +29,7 @@ export const CLIPS: Clip[] = [
   fall,
   punch,
   hit,
+  ...REACTIONS,
   wave,
   cheer,
   turn('turn_left_45', 'Turn left 45°', 45),
