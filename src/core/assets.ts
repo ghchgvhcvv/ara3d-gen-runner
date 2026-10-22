@@ -51,7 +51,7 @@ export function decodeTargets(p: Pack<TargetsMeta>): Pack<TargetsMeta> {
   return { meta: p.meta, arrays: { idx: p.arrays.idx, dx: out[0], dy: out[1], dz: out[2] } };
 }
 
-export type ProxyKind = 'body' | 'eyes' | 'eyebrows' | 'eyelashes' | 'hair' | 'outfit' | 'shoes' | 'hat' | 'teeth';
+export type ProxyKind = 'body' | 'eyes' | 'eyebrows' | 'eyelashes' | 'hair' | 'outfit' | 'shoes' | 'hat' | 'teeth' | 'tongue';
 
 export interface ProxyMeta {
   id: string;
@@ -101,6 +101,9 @@ export interface Catalog {
   hats: CatalogItem[];
   bodies: CatalogItem[];
   eyeMesh: string;
+  /** Teeth variants and the tongue (mouth interior). */
+  teeth: CatalogItem[];
+  tongue: CatalogItem;
   sliders: SliderGroup[];
 }
 

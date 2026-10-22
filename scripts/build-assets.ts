@@ -471,6 +471,8 @@ async function main() {
     });
   }
   const eyeMesh = await buildProxy(join(SYS, 'eyes/high-poly/high-poly.mhclo'), 'eyes', 'high-poly', false);
+  const teeth = await proxiesIn('teeth', 'teeth');
+  const tongue = await buildProxy(join(SYS, 'tongue/tongue01/tongue01.mhclo'), 'tongue', 'tongue01');
   await buildProxy(join(SYS, 'eyes/low-poly/low-poly.mhclo'), 'eyes', 'low-poly', false);
 
   const clothes = await proxiesIn('clothes', 'outfit');
@@ -502,6 +504,8 @@ async function main() {
     hats,
     bodies: await proxiesIn('proxymeshes', 'body', '.proxy'),
     eyeMesh: eyeMesh.file!,
+    teeth,
+    tongue,
     sliders: sliders.groups,
   };
   writeFileSync(join(OUT, 'catalog.json'), JSON.stringify(catalog));

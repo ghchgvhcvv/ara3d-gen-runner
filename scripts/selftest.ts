@@ -261,6 +261,7 @@ for (const e of EARRINGS) cases.push([`look earrings ${e}`, { ...DEFAULT_PARAMS,
 for (const e of EXPRESSIONS) cases.push([`face ${e}`, { ...DEFAULT_PARAMS, expression: e, detail: e === 'happy' ? 'high' : 'medium' }]);
 cases.push(['face shapes off, angry', { ...DEFAULT_PARAMS, expression: 'angry', faceShapes: false }]);
 cases.push(['face low detail', { ...DEFAULT_PARAMS, expression: 'sad', detail: 'low' }]);
+for (const tv of [...lib.catalog.teeth.map((x) => x.id), 'none']) cases.push([`face teeth ${tv}`, { ...DEFAULT_PARAMS, teeth: tv, expression: 'laughing' }]);
 cases.push(['look everything, low', { ...DEFAULT_PARAMS, outfit: 'none', hair: 'box_braids', facialHair: 'full_beard', tattoos: [...TATTOOS], earrings: 'big_hoops', weapon: 'sword', detail: 'low' }]);
 
 // Rig variants
@@ -277,6 +278,7 @@ for (const [label, p] of cases) {
     checkMesh(ch.mesh, label, ch.height);
     const mats = ch.mesh.materials.map((m) => m.name);
     if (p.faceShapes === false && ch.mesh.morphs) fail(`${label}: face shapes exported although turned off`);
+    if ((p.teeth ?? 'teeth_base') !== 'none' !== mats.includes('Teeth')) fail(`${label}: teeth present=${mats.includes('Teeth')}`);
     if (p.faceShapes !== false && !ch.mesh.morphs) fail(`${label}: no face shapes`);
     if (ch.mesh.morphs) for (const d of ch.mesh.morphs.deltas) if (d.length !== ch.mesh.positions.length) { fail(`${label}: face shape size`); break; }
     if (p.weapon && p.weapon !== 'none') {
