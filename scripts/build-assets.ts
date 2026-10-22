@@ -335,7 +335,7 @@ function buildTargets(extra: Set<string>) {
   const all = walk(join(MH, 'targets')).filter((p) => p.endsWith('.target'));
   const byKey = new Map(all.map((p) => [relative(join(MH, 'targets'), p).replace(/\.target$/, ''), p]));
   const wanted = [...byKey.keys()].filter(
-    (k) => ((k.startsWith('macrodetails/') || /^breast\/(fe)?male-/.test(k)) && !k.includes('-baby')) || extra.has(k),
+    (k) => ((k.startsWith('macrodetails/') || /^breast\/(fe)?male-/.test(k)) && !k.includes('-baby')) || k.startsWith('expression/units/') || extra.has(k),
   );
   // Format 2: MakeHuman targets have three decimals, so values are stored exactly as integer
   // thousandths, delta-coded along each target (neighbouring vertices move alike) and split into

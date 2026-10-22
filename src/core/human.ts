@@ -17,6 +17,7 @@ import { applyTargets, targetWeights } from './morph';
 import type { Pack } from './pack';
 import { ageToYears, type HumanParams } from './params';
 import { buildLooks } from './looks';
+import { calibrateBlinks, EXPRESSION_WEIGHTS, FACE_SHAPE_NAMES, faceDeltas, weightsArray } from './face';
 
 export interface Character {
   params: HumanParams;
@@ -27,6 +28,8 @@ export interface Character {
   weapon?: { id: WeaponId; rot: Q; parts: WeaponPart[] };
   /** Standing height in metres (body, without hair/hat). */
   height: number;
+  /** Facial blend shapes in the mesh (names and the expression's resting weights), if exported. */
+  face?: { names: string[]; defaults: number[] };
 }
 
 /** MakeHuman units are decimetres. */
@@ -72,11 +75,32 @@ function fit(proxy: Pack<ProxyMeta>, coords: Float32Array): Float32Array {
   return out;
 }
 
-function proxyMesh(proxy: Pack<ProxyMeta>, coords: Float32Array, skin?: Skin): PolyMesh {
+/** Blend-shape offsets for a fitted proxy (eyebrows and eyelashes follow the face), or undefined if untouched. */
+function proxyMorphs(proxy: Pack<ProxyMeta>, coords: Float32Array, base: Float32Array, deltas?: Float32Array[]): Float32Array[] | undefined {
+  if (!deltas) return undefined;
+  const refs = proxy.arrays.refs as Uint32Array;
+  let any = false;
+  const out = deltas.map((d) => {
+    let touched = false;
+    for (let i = 0; i < refs.length && !touched; i++) touched = d[refs[i] * 3] !== 0 || d[refs[i] * 3 + 1] !== 0 || d[refs[i] * 3 + 2] !== 0;
+    if (!touched) return new Float32Array(base.length);
+    any = true;
+    const moved = Float32Array.from(coords);
+    for (let i = 0; i < moved.length; i++) moved[i] += d[i];
+    const f = fit(proxy, moved);
+    for (let i = 0; i < f.length; i++) f[i] -= base[i];
+    return f;
+  });
+  return any ? out : undefined;
+}
+
+function proxyMesh(proxy: Pack<ProxyMeta>, coords: Float32Array, skin?: Skin, deltas?: Float32Array[]): PolyMesh {
   const a = proxy.arrays as Record<string, Uint8Array & Uint32Array & Float32Array>;
+  const positions = fit(proxy, coords);
   return {
-    positions: fit(proxy, coords), faceSizes: a.faceSizes, faceVerts: a.faceVerts, faceUVs: a.faceUVs, uvs: a.uvs,
+    positions, faceSizes: a.faceSizes, faceVerts: a.faceVerts, faceUVs: a.faceUVs, uvs: a.uvs,
     skin: skin && skinFromRefs(a.refs, a.weights, skin),
+    morphs: proxyMorphs(proxy, coords, positions, deltas),
   };
 }
 
@@ -125,6 +149,19 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
 
   stage('Shaping body');
   const coords = applyTargets(lib, targetWeights(p, slidersOf(lib)));
+  // Facial blend shapes (base-mesh offsets). Without them, the expression is baked into the face.
+  const exprWeights = weightsArray(EXPRESSION_WEIGHTS[p.expression] ?? {});
+  let faceD: Float32Array[] | undefined = p.faceShapes || exprWeights.some((w) => w) ? faceDeltas(lib, p) : undefined;
+  if (faceD) {
+    const ea = pEyes.arrays as Record<string, Uint8Array & Uint32Array>;
+    calibrateBlinks(faceD, coords, lib.base.arrays.faceVerts as Uint32Array, { positions: fit(pEyes, coords), faceSizes: ea.faceSizes, faceVerts: ea.faceVerts });
+  }
+  if (faceD && !p.faceShapes) {
+    faceD.forEach((d, s) => {
+      if (exprWeights[s]) for (let i = 0; i < coords.length; i++) coords[i] += d[i] * exprWeights[s];
+    });
+    faceD = undefined;
+  }
   const fv = lib.base.arrays.faceVerts as Uint32Array;
   // Rigging: target skeleton and per-base-vertex weights; every part derives its weights from these.
   const rigged = p.rig !== 'none';
@@ -139,6 +176,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
   };
   const fullBody: PolyMesh = {
     skin: bskin,
+    morphs: faceD,
     positions: coords,
     faceSizes: new Uint8Array(fv.length / 4).fill(4),
     faceVerts: fv,
@@ -159,7 +197,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
   const coveredFaces = new Uint8Array(fv.length / 4);
   for (const g of gparts) if (g.hides) for (let f = 0; f < coveredFaces.length; f++) coveredFaces[f] |= g.hides[f];
   let body: PolyMesh = pBody
-    ? proxyMesh(pBody, coords, bskin)
+    ? proxyMesh(pBody, coords, bskin, faceD)
     : compact(fullBody, (f, c) => !(assetDel[c[0]] | assetDel[c[1]] | assetDel[c[2]] | assetDel[c[3]]) && !coveredFaces[f]);
   const hd = p.detail === 'high';
   if (hd) body = subdivide(body);
@@ -180,17 +218,17 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
   const parts: [PolyMesh, Material][] = [];
   parts.push([body, { ...toMaterial(skin.material!), name: 'Skin', color: tint(skin.material!.color, p.skinTint), roughness: 0.55 }]);
   if (looks.overlay) parts.push([hd ? subdivide(looks.overlay[0]) : looks.overlay[0], looks.overlay[1]]);
-  parts.push([proxyMesh(pEyes, coords, bskin), { ...toMaterial(eyeMat.material!), name: 'Eyes', alpha: 'mask' }]);
-  if (pBrows && brows) parts.push([proxyMesh(pBrows, coords, bskin), { ...toMaterial(brows.material!), name: 'Eyebrows' }]);
-  if (pLashes && lashes) parts.push([proxyMesh(pLashes, coords, bskin), { ...toMaterial(lashes.material!), name: 'Eyelashes' }]);
+  parts.push([proxyMesh(pEyes, coords, bskin, faceD), { ...toMaterial(eyeMat.material!), name: 'Eyes', alpha: 'mask' }]);
+  if (pBrows && brows) parts.push([proxyMesh(pBrows, coords, bskin, faceD), { ...toMaterial(brows.material!), name: 'Eyebrows' }]);
+  if (pLashes && lashes) parts.push([proxyMesh(pLashes, coords, bskin, faceD), { ...toMaterial(lashes.material!), name: 'Eyelashes' }]);
   const groundParts: PolyMesh[] = [];
   if (pShoes && shoesItem) {
-    const m = proxyMesh(pShoes, coords, bskin);
+    const m = proxyMesh(pShoes, coords, bskin, faceD);
     parts.push([hd ? subdivide(m) : m, { ...toMaterial(shoesItem.material!), name: 'Shoes' }]);
     groundParts.push(m);
   }
   if (pOutfit && outfit) {
-    const m = proxyMesh(pOutfit, coords, bskin);
+    const m = proxyMesh(pOutfit, coords, bskin, faceD);
     const mat = toMaterial(outfit.material!);
     parts.push([hd ? subdivide(m) : m, { ...mat, name: 'Outfit', color: tint(mat.color, p.outfitTint) }]);
   }
@@ -199,14 +237,14 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
     parts.push([hd && g.smooth ? subdivide(m) : m, g.material]);
     if (g.ground) groundParts.push(g.mesh);
   }
-  const hatMesh = pHat ? proxyMesh(pHat, coords, bskin) : undefined;
+  const hatMesh = pHat ? proxyMesh(pHat, coords, bskin, faceD) : undefined;
   // Lowest point of anything covering the crown: hair above it is trimmed.
   let brim = Infinity;
   for (const m of [hatMesh, ...gparts.filter((g) => g.headwear).map((g) => g.mesh)])
     if (m) for (let i = 1; i < m.positions.length; i += 3) brim = Math.min(brim, m.positions[i]);
   if (pHair && hair) {
     const mat = toMaterial(hair.material!);
-    let m = proxyMesh(pHair, coords, bskin);
+    let m = proxyMesh(pHair, coords, bskin, faceD);
     if (brim < Infinity) {
       const P = m.positions;
       m = compact(m, (_, c) => c.reduce((s, v) => s + P[v * 3 + 1], 0) / c.length < brim + 0.05);
@@ -238,7 +276,17 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
     }
     return out;
   };
-  const out = parts.map(([m, mat]) => [{ ...m, positions: xf(m.positions) }, mat] as const);
+  // Parts that track a base-mesh vertex (beards, procedural hair, garments) inherit its face offsets.
+  const withMorphs = (m: PolyMesh): Float32Array[] | undefined => {
+    if (m.morphs || !faceD || !m.ref) return m.morphs;
+    const ref = m.ref;
+    return faceD.map((d) => {
+      const out = new Float32Array(ref.length * 3);
+      for (let i = 0; i < ref.length; i++) if (ref[i] >= 0) out.set(d.subarray(ref[i] * 3, ref[i] * 3 + 3), i * 3);
+      return out;
+    });
+  };
+  const out = parts.map(([m, mat]): [PolyMesh, Material] => [{ ...m, positions: xf(m.positions), morphs: withMorphs(m)?.map((d) => d.map((x) => x * DM)) }, mat]);
 
   // --- Rig: bones placed on the morphed joints; optional T-pose re-posing ---
   let rig: Rig | undefined;
@@ -305,9 +353,10 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
   }
 
   stage('Assembling mesh');
-  const asm = new MeshAssembler();
+  const faceInfo = faceD ? { names: FACE_SHAPE_NAMES, defaults: exprWeights } : undefined;
+  const asm = new MeshAssembler(faceInfo);
   for (const [m, mat] of out) asm.add(m, mat);
-  return { params: p, mesh: asm.build(), rig, weapon, height: (maxBodyY - minY) * DM };
+  return { params: p, mesh: asm.build(), rig, weapon, height: (maxBodyY - minY) * DM, face: faceInfo };
 }
 
 /** Texture files referenced by a mesh. */

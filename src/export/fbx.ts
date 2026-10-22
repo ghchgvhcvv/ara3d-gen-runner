@@ -3,7 +3,7 @@
  * all read). Writes a single mesh with per-polygon materials, in centimetres.
  */
 import { zlibSync } from 'fflate';
-import type { MeshData } from '../core/mesh';
+import { MORPH_EPSILON, type MeshData } from '../core/mesh';
 import { hexToRgb, srgbToLinear } from '../core/math';
 import { localTransform, mulMV, transpose, type Mat3, type Rig } from '../core/rig/rig';
 import type { BakedClip } from '../core/anim/evaluate';
@@ -338,6 +338,43 @@ export function exportFBX(
   const rigConn: FbxNode[] = [];
   let boneCount = 0, deformerCount = 0, attrCount = 0, curveNodeCount = 0, curveCount = 0;
   const animStacks: { name: string; stop: number }[] = [];
+
+  // --- Facial blend shapes: BlendShape deformer -> one channel per shape -> sparse Shape geometry ---
+  let shapeCount = 0, blendDeformers = 0;
+  const channelIds: number[] = [];
+  if (mesh.morphs && !meshless) {
+    const bsId = id();
+    rigObjs.push(N('Deformer', [L(bsId), S(objName('Face', 'Deformer')), S('BlendShape')], [N('Version', [I(100)])]));
+    rigConn.push(N('C', [S('OO'), L(bsId), L(geomId)]));
+    blendDeformers = 1;
+    mesh.morphs.deltas.forEach((d, s) => {
+      const shapeName = mesh.morphs!.names[s];
+      const idx: number[] = [], val: number[] = [];
+      for (let v = 0; v < d.length / 3; v++) {
+        if (Math.abs(d[v * 3]) < MORPH_EPSILON && Math.abs(d[v * 3 + 1]) < MORPH_EPSILON && Math.abs(d[v * 3 + 2]) < MORPH_EPSILON) continue;
+        idx.push(v);
+        val.push(d[v * 3] * CM, d[v * 3 + 1] * CM, d[v * 3 + 2] * CM);
+      }
+      const chId = id(), shId = id();
+      channelIds.push(chId);
+      rigObjs.push(
+        N('Deformer', [L(chId), S(objName(shapeName, 'SubDeformer')), S('BlendShapeChannel')], [
+          N('Version', [I(100)]),
+          N('DeformPercent', [D(mesh.morphs!.defaults[s] * 100)]),
+          N('FullWeights', [Ad([100])]),
+          N('Properties70', [], [P('DeformPercent', 'Number', '', 'A', D(mesh.morphs!.defaults[s] * 100))]),
+        ]),
+        N('Geometry', [L(shId), S(objName(shapeName, 'Geometry')), S('Shape')], [
+          N('Version', [I(100)]),
+          N('Indexes', [Ai(idx)]),
+          N('Vertices', [Ad(val)]),
+          N('Normals', [Ad(new Array(val.length).fill(0))]),
+        ]),
+      );
+      rigConn.push(N('C', [S('OO'), L(chId), L(bsId)]), N('C', [S('OO'), L(shId), L(chId)]));
+      shapeCount++;
+    });
+  }
   if (rig && mesh.joints && mesh.weights) {
     const B = rig.bones;
     const armId = id(), armAttr = id(), skinId = id(), poseId = id();
@@ -464,6 +501,28 @@ export function exportFBX(
         curveNode(boneIds[i], 'Lcl Rotation', 'R', eul);
         if (b.parent < 0) curveNode(boneIds[i], 'Lcl Translation', 'T', c.frames.map((f) => f.rootPos.get(i)!.map((x) => x * CM)));
       });
+      // Facial blend-shape weights (DeformPercent, 0..100) per channel.
+      if (channelIds.length && c.frames[0]?.morph)
+        channelIds.forEach((chId, s) => {
+          const nodeId = id(), cid = id();
+          const vals = c.frames.map((f) => f.morph![s] * 100);
+          rigObjs.push(N('AnimationCurveNode', [L(nodeId), S(objName('DeformPercent', 'AnimCurveNode')), S('')], [N('Properties70', [], [
+            P('d|DeformPercent', 'Number', '', 'A', D(vals[0])),
+          ])]));
+          rigConn.push(N('C', [S('OO'), L(nodeId), L(layerId)]), N('C', [S('OP'), L(nodeId), L(chId), S('DeformPercent')]));
+          rigObjs.push(N('AnimationCurve', [L(cid), S(objName('', 'AnimCurve')), S('')], [
+            N('Default', [D(vals[0])]),
+            N('KeyVer', [I(4009)]),
+            N('KeyTime', [Al(keyTimes)]),
+            N('KeyValueFloat', [Af(vals)]),
+            N('KeyAttrFlags', [Ai([24836])]),
+            N('KeyAttrDataFloat', [Af([0, 0, 9.419963346924634e-30, 0])]),
+            N('KeyAttrRefCount', [Ai([vals.length])]),
+          ]));
+          rigConn.push(N('C', [S('OP'), L(cid), L(nodeId), S('d|DeformPercent')]));
+          curveNodeCount++;
+          curveCount++;
+        });
     }
   }
 
@@ -522,18 +581,12 @@ export function exportFBX(
     N('References'),
     N('Definitions', [], [
       N('Version', [I(100)]),
-      N('Count', [I((meshless ? 1 : 3 + mesh.materials.length + videoCount * 2) + (boneCount ? boneCount + 1 + attrCount + deformerCount + (meshless ? 0 : 1) : 0) + animStacks.length * 2 + curveNodeCount + curveCount)]),
+      N('Count', [I((meshless ? 1 : 3 + mesh.materials.length + videoCount * 2) + (boneCount ? boneCount + 1 + attrCount + deformerCount + (meshless ? 0 : 1) : 0) + blendDeformers + shapeCount * 2 + animStacks.length * 2 + curveNodeCount + curveCount)]),
       N('ObjectType', [S('GlobalSettings')], [N('Count', [I(1)])]),
       N('ObjectType', [S('Model')], [N('Count', [I((meshless ? 0 : 1) + (boneCount ? boneCount + 1 : 0))])]),
-      ...(boneCount
-        ? [
-            N('ObjectType', [S('NodeAttribute')], [N('Count', [I(attrCount)])]),
-            ...(meshless ? [] : [
-              N('ObjectType', [S('Deformer')], [N('Count', [I(deformerCount)])]),
-              N('ObjectType', [S('Pose')], [N('Count', [I(1)])]),
-            ]),
-          ]
-        : []),
+      ...(boneCount ? [N('ObjectType', [S('NodeAttribute')], [N('Count', [I(attrCount)])])] : []),
+      ...(!meshless && deformerCount + blendDeformers + shapeCount ? [N('ObjectType', [S('Deformer')], [N('Count', [I(deformerCount + blendDeformers + shapeCount)])])] : []),
+      ...(boneCount && !meshless ? [N('ObjectType', [S('Pose')], [N('Count', [I(1)])])] : []),
       ...(animStacks.length
         ? [
             N('ObjectType', [S('AnimationStack')], [N('Count', [I(animStacks.length)])]),
@@ -543,7 +596,7 @@ export function exportFBX(
           ]
         : []),
       ...(meshless ? [] : [
-        N('ObjectType', [S('Geometry')], [N('Count', [I(1)])]),
+        N('ObjectType', [S('Geometry')], [N('Count', [I(1 + shapeCount)])]),
         N('ObjectType', [S('Material')], [N('Count', [I(mesh.materials.length)])]),
       ]),
       ...(videoCount && !meshless

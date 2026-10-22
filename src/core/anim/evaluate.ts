@@ -15,6 +15,73 @@ export interface Frame {
   rot: Q[];
   /** Local position of root bones (parent = -1); other bones keep their rest offsets. */
   rootPos: Map<number, Vec3>;
+  /** Facial blend-shape weights (0..1, in the character's face-shape order), when it has face shapes. */
+  morph?: number[];
+}
+
+// --- Face layer ------------------------------------------------------------------------------
+// Blinks and eye glances are placed at fixed times inside each clip (never across its end), so
+// loops stay seamless and every export of a clip is identical.
+
+const BLINK_LEN = 0.28;
+const smooth = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+/** Closure 0..1, `u` seconds into a blink: fast close, short hold, slower open. */
+const blinkCurve = (u: number) => (u < 0 || u > BLINK_LEN ? 0 : u < 0.07 ? smooth(u / 0.07) : u < 0.12 ? 1 : 1 - smooth((u - 0.12) / 0.16));
+const hash1 = (i: number, k: number) => {
+  const x = Math.sin(i * 127.1 + k * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/** Blink closure inside a clip (exports): every 3.4 s from 1.1 s, never across the clip's end. */
+function blinkAt(t: number, duration: number): number {
+  if (duration < 1.8) return 0;
+  for (let b = 1.1; b + BLINK_LEN + 0.05 < duration; b += 3.4) {
+    const w = blinkCurve(t - b);
+    if (w) return w;
+  }
+  return 0;
+}
+
+/** Blink closure on a continuous clock (live preview): natural, slightly irregular intervals. */
+function blinkLive(t: number): number {
+  // Blink k happens at k * 3.6 s plus up to 1.6 s of jitter.
+  const k = Math.floor(t / 3.6);
+  for (const j of [k - 1, k]) {
+    const w = blinkCurve(t - (j * 3.6 + hash1(j, 7) * 1.6));
+    if (w) return w;
+  }
+  return 0;
+}
+
+/** Eye glances on a continuous clock (live preview). */
+function glanceLive(t: number): [number, number] {
+  const i = Math.floor(t / 1.6);
+  const target = (n: number): [number, number] => [(hash1(n, 1) * 2 - 1) * 7, (hash1(n, 2) * 2 - 1) * 3];
+  const f = smooth((t - i * 1.6) / 0.07);
+  const a = target(i - 1), b = target(i);
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+
+/** Small automatic eye glances (yaw, pitch degrees), returning to centre before the clip ends. */
+function glanceAt(t: number, duration: number): [number, number] {
+  if (duration < 1.8) return [0, 0];
+  const hash = (i: number, k: number) => {
+    const x = Math.sin(i * 127.1 + k * 311.7 + duration * 74.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  const s = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+  const end = duration - 0.35;
+  let cur: [number, number] = [0, 0], prev: [number, number] = [0, 0], start = -1;
+  for (let i = 0, g = 0.6; g < end; i++, g += 1.6) {
+    if (t < g) break;
+    prev = cur;
+    cur = [(hash(i, 1) * 2 - 1) * 7, (hash(i, 2) * 2 - 1) * 3];
+    start = g;
+  }
+  if (t >= end) [prev, cur, start] = [cur, [0, 0], end];
+  if (start < 0) return [0, 0];
+  const f = s((t - start) / 0.07); // eyes move fast (saccade)
+  return [prev[0] + (cur[0] - prev[0]) * f, prev[1] + (cur[1] - prev[1]) * f];
 }
 
 /** Hips height when lying on the back (metres). */
@@ -57,15 +124,16 @@ export class Animator {
   private socket: number;
   private fits = new Map<string, { rot: Q; supportZ: number }>();
 
-  constructor(readonly rig: Rig) {
+  /** `face`: the character's blend-shape names and resting (expression) weights, if it has face shapes. */
+  constructor(readonly rig: Rig, readonly face?: { names: string[]; defaults: number[] }) {
     const B = rig.bones;
     this.restWorld = B.map((b) => quatOf(b.rot));
     this.restLocal = B.map((b, i) => (b.parent < 0 ? this.restWorld[i] : qmul(qconj(this.restWorld[b.parent]), this.restWorld[i])));
     // Game-rig name for each bone (so clips written against the game rig drive any skeleton).
     const gameNames = [
-      'Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head',
+      'Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'Jaw',
       ...['Left', 'Right'].flatMap((s) => [
-        'Shoulder', 'Arm', 'ForeArm', 'Hand', 'UpLeg', 'Leg', 'Foot', 'ToeBase',
+        'Eye', 'Shoulder', 'Arm', 'ForeArm', 'Hand', 'UpLeg', 'Leg', 'Foot', 'ToeBase',
         ...['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'].flatMap((f) => [1, 2, 3].map((k) => `Hand${f}${k}`)),
       ].map((n) => s + n)),
     ];
@@ -179,8 +247,48 @@ export class Animator {
     return { rot: [...this.restLocal], rootPos };
   }
 
-  frame(clip: Clip, time: number, opts: { rootMotion?: boolean; noSupport?: boolean } = {}): Frame {
-    let s = clip.sample(time);
+  /**
+   * `faceTime`: blink and glance on this continuous clock (seconds) instead of at fixed times inside
+   * the clip. The live preview uses it so every clip blinks, as a game layering a face would.
+   */
+  frame(clip: Clip, time: number, opts: { rootMotion?: boolean; noSupport?: boolean; faceTime?: number } = {}): Frame {
+    const s = this.withEyes(clip.sample(time), clip, time, opts.faceTime);
+    const frame = this.frameOf(s, clip, time, opts);
+    if (this.face) frame.morph = this.faceWeights(s, clip, time, opts.faceTime);
+    return frame;
+  }
+
+  /** The resting face (expression + live blinks) for the bind pose, on a continuous clock. */
+  restFace(faceTime: number): number[] | undefined {
+    if (!this.face) return undefined;
+    return this.faceWeights({ bones: {}, root: {} }, { id: '', name: '', category: 'Emotes', duration: 0, loop: true, sample: () => ({ bones: {}, root: {} }) }, 0, faceTime);
+  }
+
+  /** Eye bones follow the clip's gaze, or small automatic glances. */
+  private withEyes(s: Sample, clip: Clip, time: number, faceTime?: number): Sample {
+    if (this.idx.get('LeftEye') === undefined) return s;
+    const [yaw, pitch] = s.gaze ?? (faceTime !== undefined ? glanceLive(faceTime) : glanceAt(time, clip.duration));
+    if (!yaw && !pitch) return s;
+    // Eye bones point forward (+Y): +X tilts the gaze up, +Z turns it to the character's left.
+    const ch: Ch = [pitch, 0, yaw];
+    return { ...s, bones: { ...s.bones, LeftEye: ch, RightEye: [ch[0], -ch[1], ch[2]] as Ch } };
+  }
+
+  /** Blend-shape weights: expression + the clip's face + blinks (a blink overrides wide/squinting eyes). */
+  private faceWeights(s: Sample, clip: Clip, time: number, faceTime?: number): number[] {
+    const f = this.face!;
+    const blink = faceTime !== undefined ? blinkLive(faceTime) : blinkAt(time, clip.duration);
+    return f.names.map((n, i) => {
+      let w = f.defaults[i] + (s.face?.[n] ?? 0);
+      if (blink) {
+        if (n === 'eyeBlinkLeft' || n === 'eyeBlinkRight') w = w + (1 - w) * blink;
+        else if (/^eye(Wide|Squint)/.test(n)) w *= 1 - blink;
+      }
+      return Math.min(1, Math.max(0, w));
+    });
+  }
+
+  private frameOf(s: Sample, clip: Clip, time: number, opts: { rootMotion?: boolean; noSupport?: boolean }): Frame {
     const left = s.ik?.Left;
     if (left?.support && !opts.noSupport && this.socket >= 0) {
       // Two passes: solve without the support hand, see where the weapon ended up, then

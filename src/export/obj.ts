@@ -1,5 +1,5 @@
 /** Wavefront OBJ + MTL writer. Keeps the original quad topology; textures referenced from `texDir`. */
-import type { MeshData } from '../core/mesh';
+import { morphedPositions, type MeshData } from '../core/mesh';
 import { hexToRgb, srgbToLinear } from '../core/math';
 
 const f = (x: number) => (Math.abs(x) < 1e-7 ? '0' : x.toFixed(6).replace(/\.?0+$/, ''));
@@ -11,7 +11,8 @@ export function exportOBJ(mesh: MeshData, name: string, mtlFile: string, texDir 
     `mtllib ${mtlFile}`,
     `o ${name}`,
   ];
-  const P = mesh.positions, N = mesh.normals, T = mesh.uvs;
+  // OBJ has no blend shapes: the resting expression is baked into the positions.
+  const P = morphedPositions(mesh), N = mesh.normals, T = mesh.uvs;
   for (let i = 0; i < P.length; i += 3) lines.push(`v ${f(P[i])} ${f(P[i + 1])} ${f(P[i + 2])}`);
   for (let i = 0; i < T.length; i += 2) lines.push(`vt ${f(T[i])} ${f(T[i + 1])}`);
   for (let i = 0; i < N.length; i += 3) lines.push(`vn ${f(N[i])} ${f(N[i + 1])} ${f(N[i + 2])}`);

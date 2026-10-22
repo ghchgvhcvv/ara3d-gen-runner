@@ -1,5 +1,5 @@
 /** Binary glTF 2.0 (.glb) writer with embedded textures. One primitive per material. */
-import type { MeshData } from '../core/mesh';
+import { MORPH_EPSILON, type MeshData } from '../core/mesh';
 import { localTransform, quatOf, transpose, mulMV, type Rig } from '../core/rig/rig';
 import type { BakedClip } from '../core/anim/evaluate';
 import { hexToRgb, srgbToLinear } from '../core/math';
@@ -69,6 +69,31 @@ export function exportGLB(
       attributes.WEIGHTS_0 = addAttr(mesh.weights!, 'VEC4');
     }
 
+    // Facial blend shapes: one sparse accessor per shape (only the moved vertices), shared by all primitives.
+    let targets: object[] | undefined;
+    if (mesh.morphs) {
+      targets = mesh.morphs.deltas.map((d) => {
+        const idx: number[] = [], val: number[] = [];
+        const lo = [0, 0, 0], hi = [0, 0, 0];
+        for (let v = 0; v < vcount; v++) {
+          const x = d[v * 3], y = d[v * 3 + 1], z = d[v * 3 + 2];
+          if (Math.abs(x) < MORPH_EPSILON && Math.abs(y) < MORPH_EPSILON && Math.abs(z) < MORPH_EPSILON) continue;
+          idx.push(v);
+          val.push(x, y, z);
+          [x, y, z].forEach((c, k) => ((lo[k] = Math.min(lo[k], c)), (hi[k] = Math.max(hi[k], c))));
+        }
+        const acc: Record<string, unknown> = { componentType: FLOAT, count: vcount, type: 'VEC3', min: lo, max: hi };
+        if (idx.length)
+          acc.sparse = {
+            count: idx.length,
+            indices: { bufferView: addView(bytes(Uint32Array.from(idx))), componentType: UNSIGNED_INT },
+            values: { bufferView: addView(bytes(Float32Array.from(val))) },
+          };
+        accessors.push(acc); // no bufferView: zeros, overridden by the sparse values
+        return { POSITION: accessors.length - 1 };
+      });
+    }
+
     const small = vcount < 65536;
     primitives = mesh.groups.map((g) => {
       const idx = small ? Uint16Array.from(g.indices) : g.indices;
@@ -78,7 +103,7 @@ export function exportGLB(
         count: g.indices.length,
         type: 'SCALAR',
       });
-      return { attributes, indices: accessors.length - 1, material: g.material, mode: 4 };
+      return { attributes, indices: accessors.length - 1, material: g.material, mode: 4, ...(targets ? { targets } : {}) };
     });
 
     // Images / textures
@@ -161,6 +186,15 @@ export function exportGLB(
           channels.push({ sampler: samplers.length - 1, target: { node: first + i, path: 'translation' } });
         }
       });
+      // Facial blend-shape weights, one value per shape per frame.
+      if (mesh.morphs && !meshless && c.frames[0]?.morph) {
+        const n = mesh.morphs.names.length;
+        const w = new Float32Array(c.frames.length * n);
+        c.frames.forEach((f, k) => w.set(f.morph!, k * n));
+        accessors.push({ bufferView: addView(bytes(w)), componentType: FLOAT, count: w.length, type: 'SCALAR' });
+        samplers.push({ input, output: accessors.length - 1, interpolation: 'LINEAR' });
+        channels.push({ sampler: samplers.length - 1, target: { node: 0, path: 'weights' } });
+      }
       animations.push({ name: c.name, samplers, channels });
     }
   }
@@ -171,7 +205,15 @@ export function exportGLB(
     nodes,
     ...(skins ? { skins } : {}),
     ...(animations.length ? { animations } : {}),
-    ...(meshless ? {} : { meshes: [{ name, primitives }], materials }),
+    ...(meshless
+      ? {}
+      : {
+          meshes: [{
+            name, primitives,
+            ...(mesh.morphs ? { weights: mesh.morphs.defaults, extras: { targetNames: mesh.morphs.names } } : {}),
+          }],
+          materials,
+        }),
     ...(images.length && !meshless
       ? {
           images,

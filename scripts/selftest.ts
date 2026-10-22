@@ -15,6 +15,7 @@ import { nodeLibrary } from './node-assets';
 import { WEAPONS } from '../src/core/props/weapons';
 import { EARRINGS, FACIAL_HAIR, HAIRSTYLES, TATTOOS } from '../src/core/looks';
 import { decodeCharacter, encodeCharacter } from '../src/app/share';
+import { EXPRESSIONS } from '../src/core/face';
 
 let failures = 0;
 const fail = (msg: string) => {
@@ -106,7 +107,16 @@ async function checkExports(ch: Awaited<ReturnType<typeof buildHuman>>, label: s
     const want = ch.params.animations ? CLIPS.length : 0;
     if ((json.animations?.length ?? 0) !== want) fail(`${label}: GLB has ${json.animations?.length ?? 0} animations, expected ${want}`);
   }
+  if (ch.face) {
+    const mesh0 = json.meshes[0];
+    if (mesh0.extras?.targetNames?.length !== ch.face.names.length) fail(`${label}: GLB face shape names`);
+    if (mesh0.primitives.some((p: { targets?: unknown[] }) => p.targets?.length !== ch.face!.names.length)) fail(`${label}: GLB primitives missing face targets`);
+    if (JSON.stringify(mesh0.weights) !== JSON.stringify(ch.face.defaults)) fail(`${label}: GLB resting face weights`);
+    if (ch.rig && ch.params.animations && !json.animations?.every((a: { channels: { target: { path: string } }[] }) => a.channels.some((c) => c.target.path === 'weights')))
+      fail(`${label}: GLB animations missing face weights`);
+  }
   const counts = parseFbx((await exportCharacter(lib, ch, 'fbx')).data, label);
+  if (ch.face && counts.get('Geometry') !== 1 + ch.face.names.length) fail(`${label}: FBX face shapes ${(counts.get('Geometry') ?? 1) - 1}`);
   if (ch.rig && (!counts.get('Pose') || (counts.get('Deformer') ?? 0) < 2)) fail(`${label}: FBX skin/bind pose missing`);
   if (ch.rig && ch.params.animations && counts.get('AnimationStack') !== CLIPS.length) fail(`${label}: FBX animation stacks ${counts.get('AnimationStack')}`);
   if (counts.get('Material') !== ch.mesh.materials.length) fail(`${label}: FBX material count`);
@@ -247,6 +257,10 @@ for (const f of FACIAL_HAIR) cases.push([`look beard ${f}`, { ...DEFAULT_PARAMS,
 cases.push(['look all tattoos', { ...DEFAULT_PARAMS, outfit: 'none', tattoos: [...TATTOOS], detail: 'high', restPose: 'T' }]);
 cases.push(['look tattoos under clothes', { ...DEFAULT_PARAMS, tattoos: [...TATTOOS] }]);
 for (const e of EARRINGS) cases.push([`look earrings ${e}`, { ...DEFAULT_PARAMS, earrings: e, earringMetal: 'silver' }]);
+// Faces: every expression, face shapes off (expression baked in), and on the low-detail body.
+for (const e of EXPRESSIONS) cases.push([`face ${e}`, { ...DEFAULT_PARAMS, expression: e, detail: e === 'happy' ? 'high' : 'medium' }]);
+cases.push(['face shapes off, angry', { ...DEFAULT_PARAMS, expression: 'angry', faceShapes: false }]);
+cases.push(['face low detail', { ...DEFAULT_PARAMS, expression: 'sad', detail: 'low' }]);
 cases.push(['look everything, low', { ...DEFAULT_PARAMS, outfit: 'none', hair: 'box_braids', facialHair: 'full_beard', tattoos: [...TATTOOS], earrings: 'big_hoops', weapon: 'sword', detail: 'low' }]);
 
 // Rig variants
@@ -262,6 +276,9 @@ for (const [label, p] of cases) {
     if (ch.rig) for (const j of ch.mesh.joints!) if (j >= ch.rig.bones.length) { fail(`${label}: joint index out of range`); break; }
     checkMesh(ch.mesh, label, ch.height);
     const mats = ch.mesh.materials.map((m) => m.name);
+    if (p.faceShapes === false && ch.mesh.morphs) fail(`${label}: face shapes exported although turned off`);
+    if (p.faceShapes !== false && !ch.mesh.morphs) fail(`${label}: no face shapes`);
+    if (ch.mesh.morphs) for (const d of ch.mesh.morphs.deltas) if (d.length !== ch.mesh.positions.length) { fail(`${label}: face shape size`); break; }
     if (p.weapon && p.weapon !== 'none') {
       if (!!ch.weapon !== !!ch.rig) fail(`${label}: weapon present=${!!ch.weapon} rigged=${!!ch.rig}`);
       if (ch.weapon && ch.rig) {
@@ -289,7 +306,7 @@ for (const [label, p] of cases) {
               break;
             }
       }
-    if (label.startsWith('preset') || label.startsWith('seed 1') || label.startsWith('rig') || label.startsWith('look everything') || label === 'weapon rifle game T')
+    if (label.startsWith('preset') || label.startsWith('seed 1') || label.startsWith('rig') || label.startsWith('look everything') || label === 'weapon rifle game T' || label.startsWith('face'))
       await checkExports(ch, label);
   } catch (e) {
     fail(`${label}: threw ${(e as Error).stack}`);

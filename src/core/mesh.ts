@@ -40,6 +40,23 @@ export interface MeshData {
   /** Skinning (present when rigged): 4 bone indices + 4 weights per vertex. */
   joints?: Uint16Array;
   weights?: Float32Array;
+  /** Facial blend shapes: names, per-vertex offsets (vertex count * 3 each) and resting weights. */
+  morphs?: { names: string[]; deltas: Float32Array[]; defaults: number[] };
+}
+
+/** Morph offsets moved by more than this (metres) count as changed (for sparse exports). */
+export const MORPH_EPSILON = 1e-6;
+
+/** Positions with the morphs applied at the given weights (e.g. to bake an expression into an OBJ). */
+export function morphedPositions(m: MeshData, weights?: number[]): Float32Array {
+  const out = Float32Array.from(m.positions);
+  if (!m.morphs) return out;
+  const w = weights ?? m.morphs.defaults;
+  m.morphs.deltas.forEach((d, s) => {
+    if (!w[s]) return;
+    for (let i = 0; i < out.length; i++) out[i] += d[i] * w[s];
+  });
+  return out;
 }
 
 export function triangleCount(m: MeshData): number {
@@ -55,7 +72,13 @@ export class MeshAssembler {
   private wgt: number[] = [];
   private skinned = true;
   private groups: MeshGroup[] = [];
+  private morph: number[][];
   readonly materials: Material[] = [];
+
+  /** `morphs`: blend-shape names and resting weights; parts without offsets get zeros. */
+  constructor(private morphs?: { names: string[]; defaults: number[] }) {
+    this.morph = (morphs?.names ?? []).map(() => []);
+  }
 
   add(part: PolyMesh, material: Material): void {
     const N = vertexNormals(part);
@@ -78,6 +101,11 @@ export class MeshAssembler {
           this.pos.push(part.positions[v * 3], part.positions[v * 3 + 1], part.positions[v * 3 + 2]);
           this.nrm.push(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]);
           this.uv.push(part.uvs[t * 2], part.uvs[t * 2 + 1]);
+          this.morph.forEach((arr, s) => {
+            const d = part.morphs?.[s];
+            if (d) arr.push(d[v * 3], d[v * 3 + 1], d[v * 3 + 2]);
+            else arr.push(0, 0, 0);
+          });
           if (part.skin) for (let k = 0; k < 4; k++) {
             this.jnt.push(part.skin.j[v * 4 + k]);
             this.wgt.push(part.skin.w[v * 4 + k]);
@@ -106,6 +134,7 @@ export class MeshAssembler {
       groups: this.groups,
       materials: this.materials,
       ...(this.skinned && this.jnt.length ? { joints: Uint16Array.from(this.jnt), weights: Float32Array.from(this.wgt) } : {}),
+      ...(this.morphs ? { morphs: { names: this.morphs.names, defaults: this.morphs.defaults, deltas: this.morph.map((a) => Float32Array.from(a)) } } : {}),
     };
   }
 }
@@ -134,5 +163,6 @@ export function pickGroups(m: MeshData, keep: (group: number) => boolean): MeshD
       polyIndices: g.polyIndices.map((v) => remap[v]),
     })),
     ...(m.joints && m.weights ? { joints: take(m.joints, 4), weights: take(m.weights, 4) } : {}),
+    ...(m.morphs ? { morphs: { ...m.morphs, deltas: m.morphs.deltas.map((d) => take(d, 3)) } } : {}),
   };
 }

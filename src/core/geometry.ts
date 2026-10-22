@@ -20,6 +20,8 @@ export interface PolyMesh {
   skin?: Skin;
   /** Base-mesh vertex each vertex was derived from (-1 = none), for weight transfer. */
   ref?: Int32Array;
+  /** Blend-shape offsets: one array (vertex count * 3) per face shape, in the same order everywhere. */
+  morphs?: Float32Array[];
 }
 
 /** Blend weighted source influences into the top 4, normalised. */
@@ -84,13 +86,17 @@ export function compact(m: PolyMesh, keep?: (f: number, corners: Uint32Array) =>
       w: Float32Array.from(order.flatMap((v) => [...m.skin!.w.subarray(v * 4, v * 4 + 4)])),
     },
     ref: m.ref && Int32Array.from(order.map((v) => m.ref![v])),
+    morphs: m.morphs?.map((d) => {
+      const out = new Float32Array(order.length * 3);
+      order.forEach((v, i) => out.set(d.subarray(v * 3, v * 3 + 3), i * 3));
+      return out;
+    }),
   };
 }
 
 /** One level of Catmull-Clark subdivision. Boundaries use the crease rules; UVs are interpolated linearly. */
 export function subdivide(m: PolyMesh): PolyMesh {
   const nv = m.positions.length / 3;
-  const P = m.positions;
   const nf = m.faceSizes.length;
   const faceStart = new Uint32Array(nf);
   for (let f = 0, c = 0; f < nf; f++) {
@@ -121,64 +127,69 @@ export function subdivide(m: PolyMesh): PolyMesh {
   }
   const ne = edgeA.length;
 
-  // Face points
-  const FP = new Float32Array(nf * 3);
-  for (let f = 0; f < nf; f++) {
-    const s = faceStart[f], n = m.faceSizes[f];
-    for (let k = 0; k < n; k++) for (let d = 0; d < 3; d++) FP[f * 3 + d] += P[m.faceVerts[s + k] * 3 + d] / n;
-  }
-
-  // Edge points
-  const EP = new Float32Array(ne * 3);
-  for (let e = 0; e < ne; e++) {
-    const a = edgeA[e], b = edgeB[e], f0 = edgeF0[e], f1 = edgeF1[e];
-    for (let d = 0; d < 3; d++) {
-      const mid = (P[a * 3 + d] + P[b * 3 + d]) / 2;
-      EP[e * 3 + d] = f1 < 0 ? mid : (P[a * 3 + d] + P[b * 3 + d] + FP[f0 * 3 + d] + FP[f1 * 3 + d]) / 4;
+  // New vertex positions: a linear function of the old ones, so it applies to blend-shape offsets too.
+  const points = (P: Float32Array): Float32Array => {
+    // Face points
+    const FP = new Float32Array(nf * 3);
+    for (let f = 0; f < nf; f++) {
+      const s = faceStart[f], n = m.faceSizes[f];
+      for (let k = 0; k < n; k++) for (let d = 0; d < 3; d++) FP[f * 3 + d] += P[m.faceVerts[s + k] * 3 + d] / n;
     }
-  }
 
-  // Vertex points
-  const fSum = new Float32Array(nv * 3), fCnt = new Uint32Array(nv);
-  const eSum = new Float32Array(nv * 3), eCnt = new Uint32Array(nv);
-  const bSum = new Float32Array(nv * 3), bCnt = new Uint32Array(nv);
-  for (let f = 0; f < nf; f++) {
-    const s = faceStart[f], n = m.faceSizes[f];
-    for (let k = 0; k < n; k++) {
-      const v = m.faceVerts[s + k];
-      fCnt[v]++;
-      for (let d = 0; d < 3; d++) fSum[v * 3 + d] += FP[f * 3 + d];
-    }
-  }
-  for (let e = 0; e < ne; e++) {
-    const a = edgeA[e], b = edgeB[e];
-    for (const [v, o] of [[a, b], [b, a]]) {
-      eCnt[v]++;
-      for (let d = 0; d < 3; d++) eSum[v * 3 + d] += (P[v * 3 + d] + P[o * 3 + d]) / 2;
-      if (edgeF1[e] < 0) {
-        bCnt[v]++;
-        for (let d = 0; d < 3; d++) bSum[v * 3 + d] += P[o * 3 + d];
+    // Edge points
+    const EP = new Float32Array(ne * 3);
+    for (let e = 0; e < ne; e++) {
+      const a = edgeA[e], b = edgeB[e], f0 = edgeF0[e], f1 = edgeF1[e];
+      for (let d = 0; d < 3; d++) {
+        const mid = (P[a * 3 + d] + P[b * 3 + d]) / 2;
+        EP[e * 3 + d] = f1 < 0 ? mid : (P[a * 3 + d] + P[b * 3 + d] + FP[f0 * 3 + d] + FP[f1 * 3 + d]) / 4;
       }
     }
-  }
-  const VP = new Float32Array(nv * 3);
-  for (let v = 0; v < nv; v++) {
-    for (let d = 0; d < 3; d++) {
-      const p = P[v * 3 + d];
-      if (bCnt[v] === 2) VP[v * 3 + d] = (6 * p + bSum[v * 3 + d]) / 8;
-      else if (bCnt[v] > 0 || eCnt[v] < 3) VP[v * 3 + d] = p;
-      else {
-        const n = eCnt[v];
-        const F = fSum[v * 3 + d] / fCnt[v], R = eSum[v * 3 + d] / n;
-        VP[v * 3 + d] = (F + 2 * R + (n - 3) * p) / n;
+
+    // Vertex points
+    const fSum = new Float32Array(nv * 3), fCnt = new Uint32Array(nv);
+    const eSum = new Float32Array(nv * 3), eCnt = new Uint32Array(nv);
+    const bSum = new Float32Array(nv * 3), bCnt = new Uint32Array(nv);
+    for (let f = 0; f < nf; f++) {
+      const s = faceStart[f], n = m.faceSizes[f];
+      for (let k = 0; k < n; k++) {
+        const v = m.faceVerts[s + k];
+        fCnt[v]++;
+        for (let d = 0; d < 3; d++) fSum[v * 3 + d] += FP[f * 3 + d];
       }
     }
-  }
+    for (let e = 0; e < ne; e++) {
+      const a = edgeA[e], b = edgeB[e];
+      for (const [v, o] of [[a, b], [b, a]]) {
+        eCnt[v]++;
+        for (let d = 0; d < 3; d++) eSum[v * 3 + d] += (P[v * 3 + d] + P[o * 3 + d]) / 2;
+        if (edgeF1[e] < 0) {
+          bCnt[v]++;
+          for (let d = 0; d < 3; d++) bSum[v * 3 + d] += P[o * 3 + d];
+        }
+      }
+    }
+    const VP = new Float32Array(nv * 3);
+    for (let v = 0; v < nv; v++) {
+      for (let d = 0; d < 3; d++) {
+        const p = P[v * 3 + d];
+        if (bCnt[v] === 2) VP[v * 3 + d] = (6 * p + bSum[v * 3 + d]) / 8;
+        else if (bCnt[v] > 0 || eCnt[v] < 3) VP[v * 3 + d] = p;
+        else {
+          const n = eCnt[v];
+          const F = fSum[v * 3 + d] / fCnt[v], R = eSum[v * 3 + d] / n;
+          VP[v * 3 + d] = (F + 2 * R + (n - 3) * p) / n;
+        }
+      }
+    }
 
-  const positions = new Float32Array((nv + ne + nf) * 3);
-  positions.set(VP, 0);
-  positions.set(EP, nv * 3);
-  positions.set(FP, (nv + ne) * 3);
+    const out = new Float32Array((nv + ne + nf) * 3);
+    out.set(VP, 0);
+    out.set(EP, nv * 3);
+    out.set(FP, (nv + ne) * 3);
+    return out;
+  };
+  const positions = points(m.positions);
 
   // Faces and face-varying UVs (deduplicated by value).
   const uvOut: number[] = [];
@@ -231,6 +242,7 @@ export function subdivide(m: PolyMesh): PolyMesh {
   return {
     skin,
     positions,
+    morphs: m.morphs?.map(points),
     faceSizes: new Uint8Array(outVerts.length / 4).fill(4),
     faceVerts: Uint32Array.from(outVerts),
     faceUVs: Uint32Array.from(outUVs),

@@ -84,7 +84,7 @@ export async function runExport(lib: AssetLibrary, ch: Character, plan: ExportPl
   progress('Loading textures');
   done = 0;
   const textures = await loadTextures(lib, ch);
-  const animator = ch.rig ? new Animator(ch.rig) : null;
+  const animator = ch.rig ? new Animator(ch.rig, ch.face) : null;
   const baked = new Map<string, BakedClip>();
   const bake = (ids: string[]): BakedClip[] =>
     ids.map((id) => {
