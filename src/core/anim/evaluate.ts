@@ -381,7 +381,7 @@ export class Animator {
     if (!r) {
       const t = this.animRest[i];
       const d = qrot(t, [0, 1, 0]);
-      r = qmul(qfromTo(d, m.dir[g] ?? d), t);
+      r = qmul(m.bias[g] ?? QI, qmul(qfromTo(d, m.dir[g] ?? d), t));
       this.mocapRests.set(key, r);
     }
     return r;

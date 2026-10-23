@@ -10,7 +10,7 @@
 import type { Vec3 } from '../math';
 import { fingers } from './clips/helpers';
 import type { Ch, Clip, ClipCategory, Sample } from './clips/types';
-import { qaxis, qmul, qrot, type Q } from './quat';
+import { qaxis, qconj, qmul, qrot, type Q } from './quat';
 
 interface BvhJoint {
   name: string;
@@ -88,13 +88,13 @@ export function parseBvh(text: string): Bvh {
   return { joints, frames, frameTime };
 }
 
-/** CMU (cgspeed) joint names -> our game-rig bones. */
+/** CMU (cgspeed) joint names -> our game-rig bones. Toes are left out: CMU's toe channels are noisy and bend the shoe. */
 const CMU_MAP: Record<string, string> = {
   Hips: 'Hips', LowerBack: 'Spine', Spine: 'Spine1', Spine1: 'Spine2', Neck: 'Neck', Head: 'Head',
   LeftShoulder: 'LeftShoulder', LeftArm: 'LeftArm', LeftForeArm: 'LeftForeArm', LeftHand: 'LeftHand',
   RightShoulder: 'RightShoulder', RightArm: 'RightArm', RightForeArm: 'RightForeArm', RightHand: 'RightHand',
-  LeftUpLeg: 'LeftUpLeg', LeftLeg: 'LeftLeg', LeftFoot: 'LeftFoot', LeftToeBase: 'LeftToeBase',
-  RightUpLeg: 'RightUpLeg', RightLeg: 'RightLeg', RightFoot: 'RightFoot', RightToeBase: 'RightToeBase',
+  LeftUpLeg: 'LeftUpLeg', LeftLeg: 'LeftLeg', LeftFoot: 'LeftFoot',
+  RightUpLeg: 'RightUpLeg', RightLeg: 'RightLeg', RightFoot: 'RightFoot',
 };
 
 /** World rotations (per joint) and hips position (source units) for one BVH frame. */
@@ -123,6 +123,8 @@ export interface MocapSample {
   rot: Record<string, Q>;
   /** Source rest direction per target bone (world). */
   dir: Record<string, Vec3>;
+  /** Calibration rotations (world, at rest) per target bone, applied before the motion. */
+  bias: Record<string, Q>;
   /** Hips position in leg lengths (x/z relative to the start; y above the floor, 1 = standing). */
   hips: Vec3;
   /** Key for caching rest alignments. */
@@ -172,7 +174,18 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
   const p0 = poses[f0].hips, p1 = poses[f1].hips;
   const moved = Math.hypot(p1[0] - p0[0], p1[2] - p0[2]) / leg / duration > 0.15;
   const fwd = moved ? [p1[0] - p0[0], 0, p1[2] - p0[2]] : qrot(poses[f0].world[0], [0, 0, 1]);
-  const turn = qaxis([0, 1, 0], (-Math.atan2(fwd[0], fwd[2]) * 180) / Math.PI);
+  let yaw = -Math.atan2(fwd[0], fwd[2]);
+  if (o.loop) {
+    // Face the average way the hips point (actors drift a few degrees off their path).
+    let sx = 0, sz = 0;
+    for (let f = f0; f <= f1; f++) {
+      const h = qrot(poses[f].world[0], [0, 0, 1]);
+      sx += h[0];
+      sz += h[2];
+    }
+    yaw = -Math.atan2(sx, sz);
+  }
+  const turn = qaxis([0, 1, 0], (yaw * 180) / Math.PI);
   for (const P of poses) {
     P.world = P.world.map((q) => qmul(turn, q));
     P.hips = qrot(turn, P.hips);
@@ -180,6 +193,15 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
   // In place: remove the straight-line travel between the first and last frame.
   const q0 = poses[f0].hips, q1 = poses[f1].hips;
   const vel: Vec3 = [(q1[0] - q0[0]) / duration, 0, (q1[2] - q0[2]) / duration];
+  // One-shots stay centred on their average position (an actor who walks to a stool stays in view).
+  const mid: Vec3 = [0, 0, 0];
+  if (!o.loop) {
+    for (let f = f0; f <= f1; f++) {
+      const tt = (f - f0) * ft;
+      mid[0] += (poses[f].hips[0] - q0[0] - vel[0] * tt) / (f1 - f0 + 1);
+      mid[2] += (poses[f].hips[2] - q0[2] - vel[2] * tt) / (f1 - f0 + 1);
+    }
+  }
   // Feet height (Foot and ToeBase joints and the toe tips) per frame; the lowest over the clip is the floor.
   const footJ = bvh.joints.map((j, k) => (/^(Left|Right)(Foot|ToeBase)$/.test(j.name) ? k : -1)).filter((k) => k >= 0);
   const footLow = poses.map((P) => {
@@ -202,10 +224,27 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
   for (const [g, k] of mapped) {
     // Only the limbs differ in rest posture (CMU: arms out, legs apart). The trunk, clavicles and
     // head keep our own rest directions, which follow this body's anatomy.
-    if (!/(Arm|Hand|Leg|Foot|ToeBase)$/.test(g)) continue;
+    if (!/(Arm|Hand|Leg)$/.test(g)) continue;
     const tip = bvh.joints[k].tip ?? [0, 1, 0];
     const l = Math.hypot(...tip) || 1;
     dir[g] = [tip[0] / l, tip[1] / l, tip[2] / l];
+  }
+  // Loops: spread the end-to-start mismatch over the cycle so the last frame meets the first.
+  const seam = new Map<number, Q>();
+  let seamY = 0;
+  if (o.loop) {
+    for (const [, k] of mapped) seam.set(k, qmul(poses[f0].world[k], qconj(poses[f1].world[k])));
+    seamY = poses[f0].hips[1] - poses[f1].hips[1];
+  }
+  // Calibration for our wider bodies: CMU actors hold the upper arms almost vertical, the clavicles
+  // a little raised and the feet close together, which presses the arms into the torso, bunches
+  // the shoulders and knocks the knees.
+  const bias: Record<string, Q> = {};
+  for (const [side, s] of [['Left', 1], ['Right', -1]] as const) {
+    bias[`${side}Arm`] = qaxis([0, 0, 1], s * 8);
+    bias[`${side}Shoulder`] = qaxis([0, 0, 1], -s * 4);
+    bias[`${side}UpLeg`] = qaxis([0, 0, 1], s * 4);
+    bias[`${side}Leg`] = qaxis([0, 0, 1], s * 4);
   }
   const idle: Record<string, Ch> = {};
   fingers(idle, 14);
@@ -217,11 +256,16 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
       const fa = Math.min(f1, Math.floor(x)), fb = Math.min(f1, fa + 1), w = x - fa;
       const A = poses[fa], B = poses[fb];
       const rot: Record<string, Q> = {};
-      for (const [g, k] of mapped) rot[g] = slerp(A.world[k], B.world[k], w);
       const tt = (fa - f0 + w) * ft;
+      for (const [g, k] of mapped) {
+        const q = slerp(A.world[k], B.world[k], w);
+        const c = seam.get(k);
+        rot[g] = c ? qmul(slerp([0, 0, 0, 1], c, tt / duration), q) : q;
+      }
       const h = A.hips.map((v, d) => v + (B.hips[d] - v) * w);
-      const hips: Vec3 = [(h[0] - q0[0] - vel[0] * tt) / leg, (h[1] - floor) / leg, (h[2] - q0[2] - vel[2] * tt) / leg];
-      const mocap: MocapSample = { rot, dir, hips, key: o.id };
+      h[1] += (seamY * tt) / duration;
+      const hips: Vec3 = [(h[0] - q0[0] - vel[0] * tt - mid[0]) / leg, (h[1] - floor) / leg, (h[2] - q0[2] - vel[2] * tt - mid[2]) / leg];
+      const mocap: MocapSample = { rot, dir, bias, hips, key: o.id };
       return { bones: { ...idle }, root: {}, mocap } as Sample;
     },
   };
