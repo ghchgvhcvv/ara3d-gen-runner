@@ -148,6 +148,27 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
   const f0 = Math.min(bvh.frames.length - 1, Math.round((o.start ?? 0) / ft));
   let f1 = Math.min(bvh.frames.length - 1, Math.round((o.end ?? bvh.frames.length * ft) / ft));
   const poses = smooth(bvh.frames.map((row) => poseAt(bvh, row)), Math.round(0.025 / ft));
+  // Head and neck. CMU head orientation depends on where each actor's marker cap sat (one actor
+  // holds the chin ~12 degrees up throughout, another looks ~20 degrees down), so the actor's
+  // average head pose relative to the chest is taken as their neutral and mapped to ours; movement
+  // around it is kept. The chest-to-head bend is then shared along the neck (about 60% in the neck,
+  // like the cervical spine) instead of following CMU's lower neck joint alone, which put nearly
+  // all of a nod at the skull and crushed the throat.
+  const [chestJ, neckJ, headJ] = ['Spine1', 'Neck', 'Head'].map((n) => bvh.joints.findIndex((j) => j.name === n));
+  if (chestJ >= 0 && neckJ >= 0 && headJ >= 0) {
+    const rel = poses.map((P) => qmul(qconj(P.world[chestJ]), P.world[headJ]));
+    const acc = [0, 0, 0, 0];
+    for (const q of rel.slice(f0, f1 + 1)) {
+      const sg = q[3] < 0 ? -1 : 1;
+      for (let d = 0; d < 4; d++) acc[d] += q[d] * sg;
+    }
+    const l = Math.hypot(...acc);
+    const neutral = qconj([acc[0] / l, acc[1] / l, acc[2] / l, acc[3] / l]);
+    poses.forEach((P, f) => {
+      P.world[headJ] = qmul(P.world[chestJ], qmul(rel[f], neutral));
+      P.world[neckJ] = slerp(P.world[chestJ], P.world[headJ], 0.6);
+    });
+  }
   const mapped = bvh.joints.map((j, k) => [CMU_MAP[j.name], k] as const).filter(([g]) => !!g) as [string, number][];
   if (o.loop && o.loopSearch) {
     // Seamless loop: the frame whose pose (and vertical hips) best matches the first frame.
