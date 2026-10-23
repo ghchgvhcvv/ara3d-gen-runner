@@ -6,7 +6,7 @@
 
 **▶ Try it online: [ara3dgen.com](https://ara3dgen.com)**, or self-host it (below).
 
-Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 62 animations, and export **GLB, FBX, OBJ or a ZIP bundle**. It runs entirely on your machine, in the browser or headless from the command line, with no accounts, credits or limits.
+Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 63 animations, and export **GLB, FBX, OBJ or a ZIP bundle**. It runs entirely on your machine, in the browser or headless from the command line, with no accounts, credits or limits.
 
 ![Presets: African warrior, Yoruba warrior, cyberpunk hacker, Dahomey warrior, FRSC officer, police officer, wasteland survivor, adventurer](docs/media/presets.jpg)
 
@@ -26,7 +26,7 @@ Online character generators are convenient, but you rent them. Ara 3D Gen is you
 | Privacy | Your projects live on someone's server | Nothing leaves your computer |
 | Offline | Needs an internet connection | Works offline once set up |
 | Automation | Usually a web UI only, sometimes a paid API | Scriptable CLI and a TypeScript API: generate hundreds of NPCs in a loop |
-| Ownership | Licence terms can change or restrict use | CC0 base assets: use exports commercially, no attribution |
+| Ownership | Licence terms can change or restrict use | CC0 base assets and free motion capture: use exports commercially, no attribution |
 | Customisation | What the vendor ships | Fork it: add garments, hairstyles, animations, presets, export rules |
 | Longevity | The service can shut down or change pricing | The code and your pipeline stay with you |
 
@@ -37,7 +37,7 @@ Online character generators are convenient, but you rent them. Ara 3D Gen is you
 - **Clothing:** MakeHuman outfits, or mix-and-match tops, bottoms, wrappers, uniforms and 30+ accessories. Generated fabrics (kente, aso-oke, ankara, adire, camo, leather…), all recolourable.
 - **Hair and looks:** MakeHuman hairstyles plus buzz cut, punk mohawk, cornrows and box braids. Stubble, mustache, goatee and beards. Tattoos. Earrings.
 - **Auto-rigging:** game rig (Mixamo bone names; Unity Humanoid / Unreal / Mixamo compatible), lite or full skeleton, A- or T-pose, optional face bones, a `WeaponR` socket.
-- **62 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. One evaluator drives the preview and the exports, so what you see is what you export.
+- **63 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. Walk, run, strafes, jump, low punch and cry are motion capture (CMU), retargeted onto every body; the rest are keyframed. One evaluator drives the preview and the exports, so what you see is what you export.
 - **Weapons:** rifle, pistol, sword and knife, held on the socket. Export them in the hand or as separate props.
 - **Exports you can trust:** an export panel that lists every file before you download it: static, rigged, or rigged + animations; one file or one per clip; Unity `model@clip` and Godot loop naming.
 - **Share:** one click gives a branded image of your character, a caption and a link that rebuilds the exact character in the app (no server or account needed), with buttons for X, Facebook, LinkedIn, WhatsApp, Reddit and Telegram, plus the system share sheet on phones.
@@ -90,6 +90,7 @@ Every exported zip includes the character's `params.json`, so any character can 
 
 - **Code:** [MIT](LICENSE).
 - **Character data:** MakeHuman assets, CC0 1.0 (public domain); see [scripts/ASSETS_LICENSE.txt](scripts/ASSETS_LICENSE.txt). They are downloaded by `setup-assets`, not stored in this repository.
+- **Motion capture:** the captured clips come from the [CMU Graphics Lab Motion Capture Database](http://mocap.cs.cmu.edu): free to use, including in commercial products, but the data may not be resold on its own. The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217. The retargeted clips are baked into `src/core/anim/clips/mocap-data.ts` by `npm run build-mocap` (takes are listed in `scripts/mocap-takes.ts`).
 - **Your exports:** yours. Use them in commercial and non-commercial projects without attribution.
 
 ## Contributing
@@ -240,7 +241,7 @@ The character loads playing **Idle**, a rigged idle with relaxed arms. The anima
 | --- | --- |
 | Idle & stance | Idle, Crouch idle (loops) |
 | Locomotion | Walk, Run, Walk backwards, Strafe left/right (loops; in place, or with root motion) |
-| Actions | Jump, Fall, Punch, Hit reaction (one-shots); Jump start, Jump (in air) (loop), Jump land and Running jump, split for engine character controllers |
+| Actions | Jump, Fall, Punch, Low punch, Hit reaction (one-shots); Jump start, Jump (in air) (loop), Jump land and Running jump, split for engine character controllers |
 | Emotes | Wave, Cheer, Laugh, Cry (loops) |
 | Turns | Left/right 45° and 90°, full 360° (one-shots: hip yaw with stepping feet) |
 | Shooter | Pistol idle (low ready), pistol aim, pistol fire; rifle idle (low ready), aim idle, fire single, fire full-auto, reload, aiming walk / walk back / strafe left / strafe right, rifle run, sprint, crouch aim, crouch walk; throw grenade |
@@ -254,7 +255,9 @@ The character loads playing **Idle**, a rigged idle with relaxed arms. The anima
 
 Feet are grounded automatically (crouch, landing, steps), and switching clips in the viewer crossfades over 0.25 s.
 
-Clips are defined once (`src/core/anim/clips/`, one file per set), in each bone's own frame (X = flex forward, Y = twist, Z = side), on an "animation rest" with relaxed arms and nearly straight elbows. One shared evaluator (`src/core/anim/evaluate.ts`) drives the viewer and both exporters, so one clip works on every skeleton type and on A- or T-pose binds, and the preview matches the export exactly.
+**Motion capture:** Walk, Run, Strafe left/right, Jump, Low punch and Cry are recorded performances from the [CMU motion capture database](http://mocap.cs.cmu.edu), retargeted onto each character: limbs are aligned to the recording's rest pose and calibrated for the body (arm hang, stance width, flat planted feet, each actor's neutral head), loops close seamlessly, the feet keep their floor contact, and the toes bend instead of dipping through the floor. The takes and cuts are listed in `scripts/mocap-takes.ts`; `npm run build-mocap` bakes them into compact data (`src/core/anim/clips/mocap-data.ts`, about 260 KB) so the app, the exporters and the tests have them without the source files.
+
+Keyframed clips are defined once (`src/core/anim/clips/`, one file per set), in each bone's own frame (X = flex forward, Y = twist, Z = side), on an "animation rest" with relaxed arms and nearly straight elbows. One shared evaluator (`src/core/anim/evaluate.ts`) drives the viewer and both exporters, so one clip works on every skeleton type and on A- or T-pose binds, and the preview matches the export exactly.
 
 Rig and animation options live in the Export panel: skeleton type, rest pose, facial bones, and which animations to include. With animations:
 - **GLB:** one glTF animation per clip (30 fps, rotation channels plus root translation).

@@ -17,7 +17,7 @@ import { applyTargets, targetWeights } from './morph';
 import type { Pack } from './pack';
 import { ageToYears, type HumanParams } from './params';
 import { buildLooks } from './looks';
-import { calibrateBlinks, EXPRESSION_WEIGHTS, FACE_SHAPE_NAMES, faceDeltas, weightsArray } from './face';
+import { calibrateBlinks, EXPRESSION_WEIGHTS, FACE_SHAPE_NAMES, faceDeltas, faceShapeDelta, sealLips, weightsArray } from './face';
 
 export interface Character {
   params: HumanParams;
@@ -216,6 +216,14 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
 
   stage('Shaping body');
   const coords = applyTargets(lib, targetWeights(p, slidersOf(lib)));
+  if (pTeeth) {
+    // Lips that rest slightly apart are closed, so a neutral face doesn't show the teeth.
+    const ta = pTeeth.arrays as { faceSizes: Uint8Array; faceVerts: Uint32Array };
+    const tris: number[] = [];
+    for (let f = 0, c = 0; f < ta.faceSizes.length; c += ta.faceSizes[f], f++)
+      for (let k = 1; k < ta.faceSizes[f] - 1; k++) tris.push(ta.faceVerts[c], ta.faceVerts[c + k], ta.faceVerts[c + k + 1]);
+    sealLips(coords, () => faceShapeDelta(lib, p, 'mouthUpperUp'), (c) => fit(pTeeth, c), Uint32Array.from(tris), lib.base.arrays.faceVerts as Uint32Array);
+  }
   // Facial blend shapes (base-mesh offsets). Without them, the expression is baked into the face.
   const exprWeights = weightsArray(EXPRESSION_WEIGHTS[p.expression] ?? {});
   let faceD: Float32Array[] | undefined = p.faceShapes || exprWeights.some((w) => w) ? faceDeltas(lib, p) : undefined;

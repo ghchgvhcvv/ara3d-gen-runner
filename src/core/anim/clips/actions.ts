@@ -1,4 +1,4 @@
-/** One-shot actions: jumps, fall, punch, hit reaction. */
+/** One-shot actions: jump phases, running jump, fall, punch, hit reaction (Jump and Low punch are motion capture). */
 import { type Ch, type Clip } from './types';
 import { fingers, fist, FISTS, side, track } from './helpers';
 
@@ -25,28 +25,6 @@ export const fall: Clip = {
     };
   },
 };
-
-export const jump: Clip = {
-  id: 'jump', name: 'Jump', category: 'Actions', duration: 1.3, loop: false,
-  sample: (t) => {
-    const T = [0, 0.25, 0.4, 0.55, 0.75, 0.95, 1.1, 1.3];
-    const k = (v: number[]) => track(T, v)(t);
-    const out: Record<string, Ch> = {
-      Spine: [k([0, 22, -5, 8, 10, 6, 24, 0]), 0, 0], Spine1: [k([0, 8, -4, 4, 4, 2, 8, 0]), 0, 0], Head: [k([0, -14, 4, -4, -6, -2, -14, 0]), 0, 0],
-    };
-    side(out, 'UpLeg', [k([0, 55, -5, 40, 35, 20, 58, 0]), 0, 4], [k([0, 55, -5, 40, 35, 20, 58, 0]), 0, 4]);
-    side(out, 'Leg', [k([-3, -85, 0, -60, -50, -20, -88, -3]), 0, 0], [k([-3, -85, 0, -60, -50, -20, -88, -3]), 0, 0]);
-    side(out, 'Foot', [k([0, 28, -35, -10, -10, 0, 30, 0]), 0, 0], [k([0, 28, -35, -10, -10, 0, 30, 0]), 0, 0]);
-    side(out, 'Arm', [k([0, -40, 130, 90, 70, 30, 35, 0]), 0, k([4, 8, 10, 20, 20, 10, 8, 4])], [k([0, -40, 130, 90, 70, 30, 35, 0]), 0, k([4, 8, 10, 20, 20, 10, 8, 4])]);
-    side(out, 'ForeArm', [k([12, 15, 10, 30, 30, 20, 30, 12]), 0, 0], [k([12, 15, 10, 30, 30, 20, 30, 12]), 0, 0]);
-    fingers(out, 16);
-    return { bones: out, root: { ground: true, lift: k([0, 0, 0.06, 0.38, 0.3, 0, 0, 0]) } };
-  },
-};
-
-// Jump split into phases, the way engine character controllers need it: the controller plays
-// Jump start on takeoff, loops Jump (in air) for as long as the character is airborne, and plays
-// Jump land on touchdown. Vertical motion is left to the engine's physics (clips play in place).
 
 /** Airborne pose (also the end of Jump start and the start of Jump land). */
 function airPose(out: Record<string, Ch>, f = 0) {

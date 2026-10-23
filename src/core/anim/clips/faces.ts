@@ -31,13 +31,16 @@ const hitFace = keyed([0, 0.12, 0.4, 1], {
   mouthStretch: [0, 0.6, 0.25, 0],
 });
 
+const PUNCH: FaceFn = keyed([0, 0.22, 0.45, 0.65, 1], {
+  ...both('browDownLeft', 'browDownRight', [0, 0.6, 0.8, 0.5, 0]),
+  ...both('eyeSquintLeft', 'eyeSquintRight', [0, 0.3, 0.45, 0.3, 0]),
+  ...both('noseSneerLeft', 'noseSneerRight', [0, 0.2, 0.35, 0.2, 0]),
+  mouthPress: [0, 0.6, 0.8, 0.5, 0],
+});
+
 const FACES: Record<string, FaceFn> = {
-  punch: keyed([0, 0.22, 0.45, 0.65, 1], {
-    ...both('browDownLeft', 'browDownRight', [0, 0.6, 0.8, 0.5, 0]),
-    ...both('eyeSquintLeft', 'eyeSquintRight', [0, 0.3, 0.45, 0.3, 0]),
-    ...both('noseSneerLeft', 'noseSneerRight', [0, 0.2, 0.35, 0.2, 0]),
-    mouthPress: [0, 0.6, 0.8, 0.5, 0],
-  }),
+  punch: PUNCH,
+  punch_low: PUNCH,
   hit: hitFace,
   hit_front: hitFace,
   hit_back: hitFace,

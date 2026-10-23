@@ -70,19 +70,26 @@ export function weightsArray(w: FaceWeights): number[] {
  * mix. Returns one Float32Array (vertexCount * 3) per FACE_SHAPES entry.
  */
 export function faceDeltas(lib: AssetLibrary, p: HumanParams): Float32Array[] {
+  return FACE_SHAPES.map((shape) => shapeDelta(lib, p, shape));
+}
+
+/** One face shape's offsets (see faceDeltas), by name. */
+export function faceShapeDelta(lib: AssetLibrary, p: HumanParams, name: string): Float32Array {
+  return shapeDelta(lib, p, FACE_SHAPES.find((s) => s.name === name)!);
+}
+
+function shapeDelta(lib: AssetLibrary, p: HumanParams, shape: FaceShape): Float32Array {
   const rs = p.african + p.asian + p.caucasian;
   const mix: [string, number][] = rs > 0
     ? [['african', p.african / rs], ['asian', p.asian / rs], ['caucasian', p.caucasian / rs]]
     : [['african', 1 / 3], ['asian', 1 / 3], ['caucasian', 1 / 3]];
   const base = lib.base.arrays.positions as Float32Array;
-  return FACE_SHAPES.map((shape) => {
-    const w = new Map<string, number>();
-    for (const [unit, k] of shape.units)
-      for (const [eth, e] of mix) if (e > 1e-4) w.set(`expression/units/${eth}/${unit}`, (w.get(`expression/units/${eth}/${unit}`) ?? 0) + k * e);
-    const moved = applyTargets(lib, w);
-    for (let i = 0; i < moved.length; i++) moved[i] -= base[i];
-    return moved;
-  });
+  const w = new Map<string, number>();
+  for (const [unit, k] of shape.units)
+    for (const [eth, e] of mix) if (e > 1e-4) w.set(`expression/units/${eth}/${unit}`, (w.get(`expression/units/${eth}/${unit}`) ?? 0) + k * e);
+  const moved = applyTargets(lib, w);
+  for (let i = 0; i < moved.length; i++) moved[i] -= base[i];
+  return moved;
 }
 
 
@@ -114,25 +121,9 @@ export function calibrateBlinks(
     const near = (v: number) => Math.hypot(coords[v * 3] - apex[0], coords[v * 3 + 1] - apex[1]) < 0.3 && coords[v * 3 + 2] > apex[2] - 0.25;
     const quads: number[] = [];
     for (let f = 0; f < bodyQuads.length / 4; f++) if ([0, 1, 2, 3].every((k) => near(bodyQuads[f * 4 + k]))) quads.push(f);
-    // Front-most hit of a ray toward -Z at (x, y) on triangles whose corner positions are read from
-    // `P` (flat xyz). With `facing`, only triangles facing the viewer count: engines don't draw back
-    // faces, so a lid folded under itself does not hide the eye.
-    const hit = (x: number, y: number, tris: Uint32Array, P: Float32Array, facing = false): number => {
-      let best = -Infinity;
-      for (let t = 0; t < tris.length; t += 3) {
-        const a = tris[t] * 3, b = tris[t + 1] * 3, c = tris[t + 2] * 3;
-        const ax = P[a], ay = P[a + 1], bx = P[b], by = P[b + 1], cx = P[c], cy = P[c + 1];
-        if (x < Math.min(ax, bx, cx) || x > Math.max(ax, bx, cx) || y < Math.min(ay, by, cy) || y > Math.max(ay, by, cy)) continue;
-        if (facing && (bx - ax) * (cy - ay) - (by - ay) * (cx - ax) <= 0) continue;
-        const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-        if (Math.abs(den) < 1e-12) continue;
-        const u = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / den;
-        const v = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / den;
-        if (u < 0 || v < 0 || u + v > 1) continue;
-        best = Math.max(best, u * P[a + 2] + v * P[b + 2] + (1 - u - v) * P[c + 2]);
-      }
-      return best;
-    };
+    // Engines don't draw back faces, so a lid folded under itself does not hide the eye: only
+    // skin facing the viewer counts.
+    const hit = frontHit;
     const eyeT = Uint32Array.from(eyeTris.flat());
     const skinT = Uint32Array.from(quads.flatMap((f) => [bodyQuads[f * 4], bodyQuads[f * 4 + 1], bodyQuads[f * 4 + 2], bodyQuads[f * 4], bodyQuads[f * 4 + 2], bodyQuads[f * 4 + 3]]));
     // Rays over the whole eye area; keep those that see the eyeball with the eye open.
@@ -162,4 +153,93 @@ export function calibrateBlinks(
     scales.push(scale);
   }
   return scales;
+}
+
+/** Front-most z of a ray toward -Z at (x, y) on triangles `tris` (corners in flat xyz `P`).
+ * With `facing`, only triangles facing the viewer (+Z, counter-clockwise) count. */
+function frontHit(x: number, y: number, tris: Uint32Array, P: Float32Array, facing = false): number {
+  let best = -Infinity;
+  for (let t = 0; t < tris.length; t += 3) {
+    const a = tris[t] * 3, b = tris[t + 1] * 3, c = tris[t + 2] * 3;
+    const ax = P[a], ay = P[a + 1], bx = P[b], by = P[b + 1], cx = P[c], cy = P[c + 1];
+    if (x < Math.min(ax, bx, cx) || x > Math.max(ax, bx, cx) || y < Math.min(ay, by, cy) || y > Math.max(ay, by, cy)) continue;
+    if (facing && (bx - ax) * (cy - ay) - (by - ay) * (cx - ax) <= 0) continue;
+    const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+    if (Math.abs(den) < 1e-12) continue;
+    const u = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / den;
+    const v = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / den;
+    if (u < 0 || v < 0 || u + v > 1) continue;
+    best = Math.max(best, u * P[a + 2] + v * P[b + 2] + (1 - u - v) * P[c + 2]);
+  }
+  return best;
+}
+
+/** Triangles grouped by the ray columns (x values) they span, so each ray tests only its column. */
+function byColumn(tris: Uint32Array, P: Float32Array, xs: number[]): Uint32Array[] {
+  const cols: number[][] = xs.map(() => []);
+  const step = xs.length > 1 ? xs[1] - xs[0] : 1;
+  for (let t = 0; t < tris.length; t += 3) {
+    const a = P[tris[t] * 3], b = P[tris[t + 1] * 3], c = P[tris[t + 2] * 3];
+    const i0 = Math.max(0, Math.ceil((Math.min(a, b, c) - xs[0]) / step)), i1 = Math.min(xs.length - 1, Math.floor((Math.max(a, b, c) - xs[0]) / step));
+    for (let i = i0; i <= i1; i++) cols[i].push(tris[t], tris[t + 1], tris[t + 2]);
+  }
+  return cols.map((c) => Uint32Array.from(c));
+}
+
+/**
+ * How much of the teeth shows from the front: rays every 0.5 mm over the teeth that hit a tooth
+ * in front of the face's front-facing skin (or through a gap between the lips). Units:
+ * decimetres, face toward +Z.
+ */
+export function teethShowing(teeth: Float32Array, teethTris: Uint32Array, coords: Float32Array, bodyQuads: Uint32Array): number {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity;
+  for (const v of teethTris) {
+    x0 = Math.min(x0, teeth[v * 3]); x1 = Math.max(x1, teeth[v * 3]);
+    y0 = Math.min(y0, teeth[v * 3 + 1]); y1 = Math.max(y1, teeth[v * 3 + 1]);
+    z0 = Math.min(z0, teeth[v * 3 + 2]);
+  }
+  // Skin around the mouth (any corner near it), in front of the back teeth.
+  const near = (v: number) => coords[v * 3] > x0 - 0.3 && coords[v * 3] < x1 + 0.3 && coords[v * 3 + 1] > y0 - 0.3 && coords[v * 3 + 1] < y1 + 0.3 && coords[v * 3 + 2] > z0 - 0.2;
+  const skin: number[] = [];
+  for (let f = 0; f < bodyQuads.length / 4; f++) {
+    const q = bodyQuads.subarray(f * 4, f * 4 + 4);
+    if ([0, 1, 2, 3].some((k) => near(q[k]))) skin.push(q[0], q[1], q[2], q[0], q[2], q[3]);
+  }
+  const xs: number[] = [];
+  for (let x = x0; x <= x1; x += 0.005) xs.push(x);
+  const T = byColumn(teethTris, teeth, xs), S = byColumn(Uint32Array.from(skin), coords, xs);
+  let n = 0;
+  xs.forEach((x, i) => {
+    for (let y = y0; y <= y1; y += 0.005) {
+      const t = frontHit(x, y, T[i], teeth);
+      if (t > -Infinity && t > frontHit(x, y, S[i], coords, true) + 0.001) n++;
+    }
+  });
+  return n;
+}
+
+/**
+ * Close parted lips at rest so the teeth don't show with a neutral face. Some faces rest with the
+ * lips slightly apart; the upper lip is lowered (`upperUpOf`: the mouthUpperUp shape's offsets,
+ * applied negatively) by the least amount that hides the teeth from the front. Mutates `coords`
+ * and returns the amount used (0 when the lips already meet). `teethAt` fits the teeth to a face.
+ */
+export function sealLips(
+  coords: Float32Array, upperUpOf: () => Float32Array, teethAt: (coords: Float32Array) => Float32Array,
+  teethTris: Uint32Array, bodyQuads: Uint32Array,
+): number {
+  let upperUp: Float32Array = new Float32Array(0);
+  const at = (w: number) => (w ? coords.map((v, i) => v - upperUp[i] * w) : coords);
+  const shows = (w: number) => { const c = at(w); return teethShowing(teethAt(c), teethTris, c, bodyQuads) > 0; };
+  if (!shows(0)) return 0;
+  upperUp = upperUpOf();
+  let lo = 0, hi = 0.4;
+  if (!shows(hi))
+    for (let it = 0; it < 6; it++) {
+      const m = (lo + hi) / 2;
+      if (shows(m)) lo = m;
+      else hi = m;
+    }
+  for (let i = 0; i < coords.length; i++) coords[i] -= upperUp[i] * hi;
+  return hi;
 }

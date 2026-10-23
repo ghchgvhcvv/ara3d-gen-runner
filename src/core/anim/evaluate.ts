@@ -354,6 +354,39 @@ export class Animator {
     return zMin;
   }
 
+  private mocapRests = new Map<string, Q>();
+  private mocapGrounds = new Map<string, number>();
+  private mocapGround(key: string, clip: Clip): number {
+    let g = this.mocapGrounds.get(key);
+    if (g === undefined) {
+      this.mocapGrounds.set(key, 0);
+      let low = Infinity;
+      for (let n = 0; n <= 120; n++) {
+        const t = (n / 120) * clip.duration;
+        const { pos } = this.solve(clip.sample(t), clip, t, {});
+        for (const i of this.feet) low = Math.min(low, pos[i][1]);
+      }
+      g = this.feet.length ? this.restFootY - low : 0;
+      this.mocapGrounds.set(key, g);
+    }
+    return g;
+  }
+  /**
+   * Rest alignment for a motion-captured bone: our animation-rest bone swung onto the source's rest
+   * direction, so source rotations (relative to its rest) can be applied directly.
+   */
+  private mocapRest(m: NonNullable<Sample['mocap']>, g: string, i: number): Q {
+    const key = `${m.key}|${g}`;
+    let r = this.mocapRests.get(key);
+    if (!r) {
+      const t = this.animRest[i];
+      const d = qrot(t, [0, 1, 0]);
+      r = qmul(m.bias[g] ?? QI, qmul(qfromTo(d, m.dir[g] ?? d), t));
+      this.mocapRests.set(key, r);
+    }
+    return r;
+  }
+
   /** Chest frame (rotation from the animation rest) and the IK origin at the base of the neck. */
   private chestSpace(world: Q[], pos: Vec3[]): { cd: Q; origin: Vec3 } {
     const B = this.rig.bones;
@@ -386,7 +419,22 @@ export class Animator {
         chq = qmul(qmul(qaxis([0, 0, 1], ch[2]), qaxis([0, 1, 0], ch[1])), flex);
       }
       const base = qmul(this.animRest[i], chq);
-      if (b.parent < 0) {
+      const mc = s.mocap && g ? s.mocap.rot[g] : undefined;
+      if (mc) {
+        // Motion capture: the source's world rotation applied to this bone's rest alignment.
+        world[i] = qmul(mc, this.mocapRest(s.mocap!, g!, i));
+        if (b.parent < 0) {
+          const H = b.head[1];
+          const h = s.mocap!.hips;
+          const tr = opts.rootMotion && clip.travel ? clip.travel.map((v) => v * time * k) : [0, 0, 0];
+          pos[i] = [b.head[0] + h[0] * H + tr[0], h[1] * H, b.head[2] + h[2] * H + tr[2]];
+          rootPos.set(i, pos[i]);
+        } else {
+          const o = qrot(world[b.parent], this.restOffset[i]);
+          const p = pos[b.parent];
+          pos[i] = [p[0] + o[0], p[1] + o[1], p[2] + o[2]];
+        }
+      } else if (b.parent < 0) {
         world[i] = qmul(rootRot, base);
         const drop = (r.drop ?? 0) * (LYING_HEIGHT - b.head[1]);
         const tr = opts.rootMotion && clip.travel ? clip.travel.map((v) => v * time * k) : [0, 0, 0];
@@ -398,10 +446,29 @@ export class Animator {
         const p = pos[b.parent];
         pos[i] = [p[0] + o[0], p[1] + o[1], p[2] + o[2]];
       }
+      if (s.mocap && (g === 'LeftToeBase' || g === 'RightToeBase')) {
+        // Toes bend at the ball of the foot instead of pushing their tips into the floor when the
+        // heel lifts (the capture's toes are too noisy to use).
+        const len = Math.hypot(b.tail[0] - b.head[0], b.tail[1] - b.head[1], b.tail[2] - b.head[2]);
+        const floor = b.tail[1] - (this.mocapGrounds.get(s.mocap!.key) ?? 0);
+        const d = qrot(world[i], [0, 1, 0]);
+        if (pos[i][1] + d[1] * len < floor) {
+          const dy = Math.max(-1, Math.min(1, (floor - pos[i][1]) / len));
+          const h = Math.hypot(d[0], d[2]) || 1;
+          const k = Math.sqrt(1 - dy * dy) / h;
+          world[i] = qmul(qfromTo(d, [d[0] * k, dy, d[2] * k]), world[i]);
+        }
+      }
       if (s.ik && g) this.solveIK(s, g, i, world, pos, ikDone);
       if (s.thumbs && g) this.wrapThumb(s, g, i, world, pos);
     });
     B.forEach((b, i) => (rot[i] = b.parent < 0 ? world[i] : qmul(qconj(world[b.parent]), world[i])));
+    if (s.mocap) {
+      // Motion capture keeps its own hips height; one offset per clip puts its lowest step on the floor.
+      const shift = this.mocapGround(s.mocap.key, clip);
+      for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + shift, p[2]]);
+      for (const p of pos) p[1] += shift;
+    }
     if (r.ground || r.lift) {
       // Shift the root so the lowest foot rests on the floor.
       const low = this.feet.length ? Math.min(...this.feet.map((i) => pos[i][1])) : this.restFootY;

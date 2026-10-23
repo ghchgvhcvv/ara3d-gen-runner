@@ -10,7 +10,8 @@ import { DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, type HumanParams } from
 import { DEFAULT_EXPORT, exportCharacter, planExport, runExport, type ExportSettings } from '../src/export';
 import { dressing, GARMENTS } from '../src/core/garments';
 import { Animator } from '../src/core/anim/evaluate';
-import { CLIPS } from '../src/core/anim/clips';
+import { CLIPS, clipById } from '../src/core/anim/clips';
+import { MOCAP_DATA } from '../src/core/anim/clips/mocap-data';
 import { nodeLibrary } from './node-assets';
 import { WEAPONS } from '../src/core/props/weapons';
 import { EARRINGS, FACIAL_HAIR, HAIRSTYLES, TATTOOS } from '../src/core/looks';
@@ -307,6 +308,22 @@ for (const [label, p] of cases) {
               fail(`${label}: clip ${c.id} produced a bad rotation`);
               break;
             }
+      }
+    // Motion-capture clips: loops close (last frame meets the first) and the lowest step lands on
+    // the floor (the lowest joint matches the bind pose's), on every rig.
+    if (ch.rig && label.startsWith('rig'))
+      for (const id of Object.keys(MOCAP_DATA)) {
+        const c = clipById.get(id)!, A = new Animator(ch.rig);
+        const low = (ps: number[][]) => Math.min(...ps.map((p) => p[1]));
+        const restLow = low(A.positions(A.bind()) as number[][]);
+        let clipLow = Infinity;
+        for (let i = 0; i <= 60; i++) clipLow = Math.min(clipLow, low(A.positions(A.frame(c, (i / 60) * c.duration)) as number[][]));
+        if (Math.abs(clipLow - restLow) > 0.015) fail(`${label}: mocap ${id} lowest joint ${(clipLow * 100).toFixed(1)} cm vs rest ${(restLow * 100).toFixed(1)} cm`);
+        if (c.loop) {
+          const a = A.positions(A.frame(c, 0)), b = A.positions(A.frame(c, c.duration));
+          const gap = Math.max(...a.map((p, k) => Math.hypot(p[0] - b[k][0], p[1] - b[k][1], p[2] - b[k][2])));
+          if (gap > 0.005) fail(`${label}: mocap ${id} loop gap ${(gap * 100).toFixed(1)} cm`);
+        }
       }
     if (label.startsWith('preset') || label.startsWith('seed 1') || label.startsWith('rig') || label.startsWith('look everything') || label === 'weapon rifle game T' || label.startsWith('face'))
       await checkExports(ch, label);

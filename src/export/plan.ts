@@ -167,7 +167,7 @@ export function planExport(ch: Character, s: ExportSettings): ExportPlan {
     files.push({ path: `${stem}.params.json`, kind: 'meta', rigged: false, clips: [], meshless: false, desc: 'Generator settings: load to regenerate this character' });
     if (rig && mode !== 'static') files.push({ path: `${stem}.rig.json`, kind: 'meta', rigged: false, clips: [], meshless: false, desc: 'Skeleton description (bone names, hierarchy, bind pose)' });
     files.push({ path: 'README.txt', kind: 'meta', rigged: false, clips: [], meshless: false, desc: 'What is in this download' });
-    files.push({ path: 'LICENSE.txt', kind: 'meta', rigged: false, clips: [], meshless: false, desc: 'CC0 asset licence' });
+    files.push({ path: 'LICENSE.txt', kind: 'meta', rigged: false, clips: [], meshless: false, desc: 'Asset licences' });
     files.push({ path: 'preview.png', kind: 'meta', rigged: false, clips: [], meshless: false, desc: 'Preview image (from the viewer)' });
   }
 
