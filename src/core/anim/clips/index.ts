@@ -4,9 +4,9 @@
  */
 import { type Clip } from './types';
 import { turn } from './gait';
-import { crouch, idle } from './basic';
+import { crouch, idle, walkBack } from './basic';
 import { fall, hit, jumpAir, jumpLand, jumpRunning, jumpStart, punch } from './actions';
-import { cheer, laugh } from './emotes';
+import { cheer, laugh, wave } from './emotes';
 import { PISTOL, RIFLE } from './shooter';
 import { MELEE } from './melee';
 import { VEHICLES } from './vehicles';
@@ -25,7 +25,7 @@ export const CLIPS: Clip[] = withFaces(
     crouch,
     mocap('walk', 'Walk', 'Locomotion'),
     mocap('run', 'Run', 'Locomotion'),
-    mocap('walk_back', 'Walk backwards', 'Locomotion'),
+    walkBack,
     mocap('strafe_left', 'Strafe left', 'Locomotion'),
     mocap('strafe_right', 'Strafe right', 'Locomotion'),
     mocap('jump', 'Jump', 'Actions'),
@@ -38,7 +38,7 @@ export const CLIPS: Clip[] = withFaces(
     mocap('punch_low', 'Low punch', 'Actions'),
     hit,
     ...REACTIONS,
-    mocap('wave', 'Wave', 'Emotes'),
+    wave,
     cheer,
     laugh,
     mocap('cry', 'Cry', 'Emotes'),

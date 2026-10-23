@@ -1,6 +1,29 @@
-/** Emotes: cheer and laugh (wave and cry are motion capture: see mocap-data.ts). */
+/** Emotes: wave, cheer and laugh (cry is motion capture: see mocap-data.ts). */
 import { type Ch, type Clip } from './types';
 import { fingers, fist, FISTS, side, v } from './helpers';
+
+export const wave: Clip = {
+  id: 'wave', name: 'Wave', category: 'Emotes', duration: 1.6, loop: true,
+  sample: (t) => {
+    const a = (t / 1.6) * Math.PI * 2;
+    const sw = Math.sin(a * 2); // two waves per loop
+    const out: Record<string, Ch> = { Head: [0, -12, 4], Neck: [0, -4, 0], Spine1: [0, -6, -3], Spine2: [-2, 0, -2] };
+    side(out, 'Shoulder', [0, 0, 0], [0, 0, 12]);
+    side(out, 'Arm', [2, 0, 3], [0, 0, 0]);
+    side(out, 'ForeArm', [12, 0, 0], [0, 0, 0]);
+    side(out, 'Hand', [0, 0, 0], [0, 0, 0]);
+    fingers(out, 4);
+    side(out, 'HandThumb2', [0, 0, 0], [0, 0, 0]);
+    return {
+      bones: out,
+      root: { ground: true },
+      ik: {
+        // Hand beside the head, forearm upright; the wave comes from the shoulder and wrist.
+        Right: { pos: v(-0.36 - 0.05 * sw, 0.16, 0.06), pole: v(-0.6, -1, -0.2), dir: v(-0.25 * sw, 1, 0.05), palm: v(0, 0, 1) },
+      },
+    };
+  },
+};
 
 export const cheer: Clip = {
   id: 'cheer', name: 'Cheer', category: 'Emotes', duration: 1.2, loop: true,
