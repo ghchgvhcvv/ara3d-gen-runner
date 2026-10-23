@@ -56,9 +56,11 @@ export interface Sample {
   face?: Partial<Record<string, number>>;
   /** Where the eyes look, degrees: [left (+) / right (-), up (+) / down (-)]. Replaces automatic glances. */
   gaze?: [number, number];
+  /** Motion capture (test): retargeted by the evaluator onto the rig (see anim/mocap.ts). */
+  mocap?: import('../mocap').MocapSample;
 }
 
-export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter' | 'Vehicles' | 'Reactions';
+export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter' | 'Vehicles' | 'Reactions' | 'Mocap (test)';
 
 export interface Clip {
   id: string;

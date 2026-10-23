@@ -6,6 +6,7 @@
 import { AssetLibrary, fetchSource } from '../core/assets';
 import { buildHuman, type Character } from '../core/human';
 import type { HumanParams } from '../core/params';
+import { loadMocapClips } from '../core/anim/mocap-clips';
 import { planExport, runExport, type ExportFile, type ExportSettings } from '../export';
 
 export type ToWorker =
@@ -20,6 +21,7 @@ export type FromWorker =
   | { type: 'error'; id: number; message: string };
 
 let lib: Promise<AssetLibrary> | undefined;
+let mocap: Promise<void> | undefined;
 let current: Character | undefined;
 const sent = new Set<string>();
 const post = (m: FromWorker, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(m, transfer);
@@ -27,10 +29,12 @@ const post = (m: FromWorker, transfer: Transferable[] = []) => (self as unknown 
 async function handle(m: ToWorker) {
   if (m.type === 'init') {
     lib = new AssetLibrary(fetchSource(m.assets)).init();
+    mocap = loadMocapClips(m.assets);
     return;
   }
   try {
     const L = await lib!;
+    await mocap;
     if (m.type === 'build') {
       current = await buildHuman(L, m.params, { onStage: (label) => post({ type: 'progress', id: m.id, label }) });
       // Generated textures (fabrics, tattoos, hair) the main thread hasn't seen yet.
