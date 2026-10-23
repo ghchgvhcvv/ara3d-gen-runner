@@ -4,7 +4,7 @@
  */
 import { type Clip } from './types';
 import { turn } from './gait';
-import { crouch } from './basic';
+import { crouch, idle } from './basic';
 import { fall, hit, jumpAir, jumpLand, jumpRunning, jumpStart, punch } from './actions';
 import { cheer, laugh } from './emotes';
 import { PISTOL, RIFLE } from './shooter';
@@ -21,7 +21,7 @@ const mocap = (id: string, name: string, category: Clip['category']): Clip => cl
 
 export const CLIPS: Clip[] = withFaces(
   [
-    mocap('idle', 'Idle', 'Idle & stance'),
+    idle,
     crouch,
     mocap('walk', 'Walk', 'Locomotion'),
     mocap('run', 'Run', 'Locomotion'),

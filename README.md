@@ -37,7 +37,7 @@ Online character generators are convenient, but you rent them. Ara 3D Gen is you
 - **Clothing:** MakeHuman outfits, or mix-and-match tops, bottoms, wrappers, uniforms and 30+ accessories. Generated fabrics (kente, aso-oke, ankara, adire, camo, leather…), all recolourable.
 - **Hair and looks:** MakeHuman hairstyles plus buzz cut, punk mohawk, cornrows and box braids. Stubble, mustache, goatee and beards. Tattoos. Earrings.
 - **Auto-rigging:** game rig (Mixamo bone names; Unity Humanoid / Unreal / Mixamo compatible), lite or full skeleton, A- or T-pose, optional face bones, a `WeaponR` socket.
-- **63 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. Idle, walk, run, strafes, walking backwards, jump, low punch, wave and cry are motion capture (CMU), retargeted onto every body; the rest are keyframed. One evaluator drives the preview and the exports, so what you see is what you export.
+- **63 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. Walk, run, strafes, walking backwards, jump, low punch, wave and cry are motion capture (CMU), retargeted onto every body; the rest are keyframed. One evaluator drives the preview and the exports, so what you see is what you export.
 - **Weapons:** rifle, pistol, sword and knife, held on the socket. Export them in the hand or as separate props.
 - **Exports you can trust:** an export panel that lists every file before you download it: static, rigged, or rigged + animations; one file or one per clip; Unity `model@clip` and Godot loop naming.
 - **Share:** one click gives a branded image of your character, a caption and a link that rebuilds the exact character in the app (no server or account needed), with buttons for X, Facebook, LinkedIn, WhatsApp, Reddit and Telegram, plus the system share sheet on phones.
@@ -235,7 +235,7 @@ The plan is computed by `planExport()` (`src/export/plan.ts`) and executed by `r
 
 ## Animation
 
-The character loads playing **Idle**, a motion-captured relaxed stance. The animation bar at the top of the viewport plays the clips:
+The character loads playing **Idle**, a rigged idle with relaxed arms. The animation bar at the top of the viewport plays the clips:
 
 | Category | Clips |
 | --- | --- |
@@ -255,7 +255,7 @@ The character loads playing **Idle**, a motion-captured relaxed stance. The anim
 
 Feet are grounded automatically (crouch, landing, steps), and switching clips in the viewer crossfades over 0.25 s.
 
-**Motion capture:** Idle, Walk, Run, Walk backwards, Strafe left/right, Jump, Low punch, Wave and Cry are recorded performances from the [CMU motion capture database](http://mocap.cs.cmu.edu), retargeted onto each character: limbs are aligned to the recording's rest pose and calibrated for the body (arm hang, stance width, flat planted feet, each actor's neutral head), loops close seamlessly, the feet keep their floor contact, and the toes bend instead of dipping through the floor. The takes and cuts are listed in `scripts/mocap-takes.ts`; `npm run build-mocap` bakes them into compact data (`src/core/anim/clips/mocap-data.ts`, about 260 KB) so the app, the exporters and the tests have them without the source files.
+**Motion capture:** Walk, Run, Walk backwards, Strafe left/right, Jump, Low punch, Wave and Cry are recorded performances from the [CMU motion capture database](http://mocap.cs.cmu.edu), retargeted onto each character: limbs are aligned to the recording's rest pose and calibrated for the body (arm hang, stance width, flat planted feet, each actor's neutral head), loops close seamlessly, the feet keep their floor contact, and the toes bend instead of dipping through the floor. The takes and cuts are listed in `scripts/mocap-takes.ts`; `npm run build-mocap` bakes them into compact data (`src/core/anim/clips/mocap-data.ts`, about 260 KB) so the app, the exporters and the tests have them without the source files.
 
 Keyframed clips are defined once (`src/core/anim/clips/`, one file per set), in each bone's own frame (X = flex forward, Y = twist, Z = side), on an "animation rest" with relaxed arms and nearly straight elbows. One shared evaluator (`src/core/anim/evaluate.ts`) drives the viewer and both exporters, so one clip works on every skeleton type and on A- or T-pose binds, and the preview matches the export exactly.
 

@@ -9,7 +9,7 @@ under CC0 1.0 Universal (public domain dedication) in September 2020 by:
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
 
-Motion capture: the Idle, Walk, Run, Walk backwards, Strafe left/right, Jump, Low punch, Wave and Cry
+Motion capture: the Walk, Run, Walk backwards, Strafe left/right, Jump, Low punch, Wave and Cry
 animations are retargeted from the CMU Graphics Lab Motion Capture Database
 (http://mocap.cs.cmu.edu), using cgspeed's BVH conversion. CMU's terms: the data is
 free to use, including in commercially sold products, but may not be resold

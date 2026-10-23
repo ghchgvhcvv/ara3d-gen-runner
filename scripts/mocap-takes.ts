@@ -15,7 +15,6 @@ export interface MocapTake {
 }
 
 export const MOCAP_TAKES: MocapTake[] = [
-  { id: 'idle', take: '82_08', loop: true, cut: { start: 1.0, loopSearch: [3, 6.5] } },
   { id: 'walk', take: '02_01', loop: true, cut: { start: 0.3, loopSearch: [0.8, 1.3] } },
   { id: 'run', take: '09_01', loop: true, cut: { start: 0.2, loopSearch: [0.5, 0.8] } },
   { id: 'walk_back', take: '40_02', loop: true, cut: { start: 39.2, loopSearch: [0.9, 1.5] } },
@@ -38,6 +37,5 @@ export const MOCAP_FILES: Record<string, string> = {
   '40_02': 'Sequence-040-045/40/Data/40_02.zip',
   '41_02': 'Sequence-040-045/41/Data/41_02.zip',
   '79_72': 'Sequence-076-080/79/Data/79_72.zip',
-  '82_08': 'Sequence-081-085/82/Data/82_08.zip',
   '111_37': 'Sequence-102-111/111/Data/111_37.zip',
 };
