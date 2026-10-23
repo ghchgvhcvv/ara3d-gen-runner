@@ -245,6 +245,11 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
     bias[`${side}Shoulder`] = qaxis([0, 0, 1], -s * 4);
     bias[`${side}UpLeg`] = qaxis([0, 0, 1], s * 4);
     bias[`${side}Leg`] = qaxis([0, 0, 1], s * 4);
+    // Feet: keep the source's rest toe-out (lost because feet aren't aligned) plus 5 degrees, as
+    // CMU actors walk slightly pigeon-toed.
+    const foot = bvh.joints.find((j) => j.name === `${side}Foot`)?.tip;
+    const out = foot ? (Math.atan2(s * foot[0], foot[2]) * 180) / Math.PI : 0;
+    bias[`${side}Foot`] = qaxis([0, 1, 0], s * (out + 5));
   }
   const idle: Record<string, Ch> = {};
   fingers(idle, 14);
