@@ -10,7 +10,7 @@
 import type { Vec3 } from '../math';
 import { fingers } from './clips/helpers';
 import type { Ch, Clip, ClipCategory, Sample } from './clips/types';
-import { qaxis, qconj, qmul, qrot, type Q } from './quat';
+import { qaxis, qconj, qfromTo, qmul, qrot, type Q } from './quat';
 
 interface BvhJoint {
   name: string;
@@ -204,11 +204,14 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
   }
   // Feet height (Foot and ToeBase joints and the toe tips) per frame; the lowest over the clip is the floor.
   const footJ = bvh.joints.map((j, k) => (/^(Left|Right)(Foot|ToeBase)$/.test(j.name) ? k : -1)).filter((k) => k >= 0);
-  const footLow = poses.map((P) => {
+  const ankle = ['Left', 'Right'].map((side) => bvh.joints.findIndex((j) => j.name === `${side}Foot`));
+  const ankleY: number[][] = [[], []];
+  const footLow = poses.map((P, f) => {
     const pos: Vec3[] = [];
     bvh.joints.forEach((j, k) => {
       pos[k] = j.parent < 0 ? P.hips : (qrot(P.world[j.parent], j.offset).map((v, d) => v + pos[j.parent][d]) as Vec3);
     });
+    ankle.forEach((k, s) => (ankleY[s][f] = k >= 0 ? pos[k][1] : 0));
     let low = Infinity;
     for (const k of footJ) {
       low = Math.min(low, pos[k][1]);
@@ -245,11 +248,22 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
     bias[`${side}Shoulder`] = qaxis([0, 0, 1], -s * 4);
     bias[`${side}UpLeg`] = qaxis([0, 0, 1], s * 4);
     bias[`${side}Leg`] = qaxis([0, 0, 1], s * 4);
-    // Feet: keep the source's rest toe-out (lost because feet aren't aligned) plus 5 degrees, as
-    // CMU actors walk slightly pigeon-toed.
-    const foot = bvh.joints.find((j) => j.name === `${side}Foot`)?.tip;
-    const out = foot ? (Math.atan2(s * foot[0], foot[2]) * 180) / Math.PI : 0;
-    bias[`${side}Foot`] = qaxis([0, 1, 0], s * (out + 5));
+    // Feet: CMU's rest foot isn't flat once its splayed rest legs come in (planted feet would roll
+    // ~20 degrees onto their outer edge). Level the foot over the frames where it is planted (ankle
+    // near its lowest), keeping the source's rest toe-out.
+    const k = ankle[s > 0 ? 0 : 1];
+    if (k < 0) continue;
+    const ys = ankleY[s > 0 ? 0 : 1].slice(f0, f1 + 1);
+    const lowest = Math.min(...ys);
+    const up: Vec3 = [0, 0, 0];
+    ys.forEach((y, n) => {
+      if (y > lowest + 0.05 * leg) return;
+      const u = qrot(qconj(poses[f0 + n].world[k]), [0, 1, 0]);
+      for (let d = 0; d < 3; d++) up[d] += u[d];
+    });
+    const tip = bvh.joints[k].tip;
+    const out = tip ? (Math.atan2(s * tip[0], tip[2]) * 180) / Math.PI : 0;
+    bias[`${side}Foot`] = qmul(qfromTo([0, 1, 0], up), qaxis([0, 1, 0], s * out));
   }
   const idle: Record<string, Ch> = {};
   fingers(idle, 14);
