@@ -55,9 +55,15 @@ own frame (X = flex forward, Y = twist, Z = side), and `side()` mirrors left/rig
 can be placed with IK targets in chest space. The same evaluator drives the viewer and
 both exporters, so a clip works on every skeleton and bind pose automatically.
 
+Motion-captured clips come from the CMU database: add the take to `scripts/mocap-takes.ts`
+(take id, cut, loop search range; `MOCAP_FILES` holds its download path), run
+`npm run setup-assets` (or place the BVH in `vendor/mocap/cmu/`), then `npm run build-mocap`,
+and list it in `index.ts` with `mocap(id, name, category)`. Check it in the viewer from the
+front and the side; `npm test` checks that loops close and the feet reach the floor.
+
 ## Guidelines
 
-- Keep everything procedural or CC0: no assets with restrictive licences.
+- Keep everything procedural, CC0 or under similarly free terms (like the CMU motion capture): no assets with restrictive licences.
 - Cultural dress and uniforms: please cite your sources for colours and details.
 - Adult-only options (topless, bottomless, tattoos) must stay restricted to characters aged 18+.
 - Match the surrounding code style. Comments explain *why*, not *what*.

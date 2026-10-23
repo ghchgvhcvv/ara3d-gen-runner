@@ -1,29 +1,6 @@
-/** Emotes: wave, cheer, laugh, cry. */
-import { type Ch, type Clip, type HandTarget } from './types';
+/** Emotes: cheer and laugh (wave and cry are motion capture: see mocap-data.ts). */
+import { type Ch, type Clip } from './types';
 import { fingers, fist, FISTS, side, v } from './helpers';
-
-export const wave: Clip = {
-  id: 'wave', name: 'Wave', category: 'Emotes', duration: 1.6, loop: true,
-  sample: (t) => {
-    const a = (t / 1.6) * Math.PI * 2;
-    const sw = Math.sin(a * 2); // two waves per loop
-    const out: Record<string, Ch> = { Head: [0, -12, 4], Neck: [0, -4, 0], Spine1: [0, -6, -3], Spine2: [-2, 0, -2] };
-    side(out, 'Shoulder', [0, 0, 0], [0, 0, 12]);
-    side(out, 'Arm', [2, 0, 3], [0, 0, 0]);
-    side(out, 'ForeArm', [12, 0, 0], [0, 0, 0]);
-    side(out, 'Hand', [0, 0, 0], [0, 0, 0]);
-    fingers(out, 4);
-    side(out, 'HandThumb2', [0, 0, 0], [0, 0, 0]);
-    return {
-      bones: out,
-      root: { ground: true },
-      ik: {
-        // Hand beside the head, forearm upright; the wave comes from the shoulder and wrist.
-        Right: { pos: v(-0.36 - 0.05 * sw, 0.16, 0.06), pole: v(-0.6, -1, -0.2), dir: v(-0.25 * sw, 1, 0.05), palm: v(0, 0, 1) },
-      },
-    };
-  },
-};
 
 export const cheer: Clip = {
   id: 'cheer', name: 'Cheer', category: 'Emotes', duration: 1.2, loop: true,
@@ -78,27 +55,5 @@ export const laugh: Clip = {
       // Right hand resting on the belly.
       ik: { Right: { pos: v(-0.06, -0.5 + 0.01 * ha, 0.2), pole: v(-1, -0.6, -0.4), dir: v(1, -0.2, 0.2), palm: v(0, 0, -1) } },
     };
-  },
-};
-
-/** Crying: head bowed, shoulders heaving with sobs, hands covering the face. */
-export const cry: Clip = {
-  id: 'cry', name: 'Cry', category: 'Emotes', duration: 3, loop: true,
-  sample: (t) => {
-    const a = (t / 3) * Math.PI * 2;
-    // Uneven sobs: two quick heaves, then a slower breath.
-    const sob = Math.max(0, Math.sin(a * 2)) ** 2 * 0.7 + Math.max(0, Math.sin(a * 4 + 1)) ** 3 * 0.3;
-    const out: Record<string, Ch> = {
-      Spine: [10 + 3 * sob, 0, 0], Spine1: [8 - 3 * sob, 0, 0], Spine2: [4 - 2 * sob, 0, 0],
-      Neck: [16, 0, 0], Head: [14 + 4 * sob, 3 * Math.sin(a), 0],
-    };
-    side(out, 'Shoulder', [0, 0, 6 + 7 * sob], [0, 0, 6 + 7 * sob]);
-    side(out, 'UpLeg', [0, 0, -2], [0, 0, -2]);
-    side(out, 'Leg', [-4, 0, 0], [-4, 0, 0]);
-    fingers(out, 10);
-    const hand = (s: 1 | -1): HandTarget => ({
-      pos: v(0.06 * s, 0.03 + 0.015 * sob, 0.2), pole: v(s, -1, -0.2), dir: v(-0.25 * s, 1, 0.15), palm: v(-0.2 * s, -0.1, -1),
-    });
-    return { bones: out, root: { ground: true }, ik: { Left: hand(1), Right: hand(-1) } };
   },
 };

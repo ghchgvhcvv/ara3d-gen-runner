@@ -4,7 +4,6 @@ import { triangleCount } from '../core/mesh';
 import { ageToYears, DEFAULT_PARAMS, DETAILS, PRESETS, randomParams, yearsToAge, type HumanParams } from '../core/params';
 import { GARMENTS, garmentById, PATTERNS } from '../core/garments';
 import { CLIPS, clipById } from '../core/anim/clips';
-import { loadMocapClips } from '../core/anim/mocap-clips';
 import { RIG_LABELS, type RigType } from '../core/rig/skeletons';
 import { DEFAULT_EXPORT, MODE_LABELS, planExport, type ExportSettings } from '../export';
 import { Engine } from './engine';
@@ -24,7 +23,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string,
 
 const assetsUrl = new URL(`${import.meta.env.BASE_URL}assets/`, location.href).href;
 const lib = await new AssetLibrary(fetchSource(assetsUrl)).initCatalog();
-await loadMocapClips(assetsUrl); // test: CMU motion capture
 // Building and exporting run in a worker, so the UI and the 3D view never freeze.
 const engine = new Engine(lib, assetsUrl);
 const cat = lib.catalog;

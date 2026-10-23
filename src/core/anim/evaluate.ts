@@ -446,6 +446,19 @@ export class Animator {
         const p = pos[b.parent];
         pos[i] = [p[0] + o[0], p[1] + o[1], p[2] + o[2]];
       }
+      if (s.mocap && (g === 'LeftToeBase' || g === 'RightToeBase')) {
+        // Toes bend at the ball of the foot instead of pushing their tips into the floor when the
+        // heel lifts (the capture's toes are too noisy to use).
+        const len = Math.hypot(b.tail[0] - b.head[0], b.tail[1] - b.head[1], b.tail[2] - b.head[2]);
+        const floor = b.tail[1] - (this.mocapGrounds.get(s.mocap!.key) ?? 0);
+        const d = qrot(world[i], [0, 1, 0]);
+        if (pos[i][1] + d[1] * len < floor) {
+          const dy = Math.max(-1, Math.min(1, (floor - pos[i][1]) / len));
+          const h = Math.hypot(d[0], d[2]) || 1;
+          const k = Math.sqrt(1 - dy * dy) / h;
+          world[i] = qmul(qfromTo(d, [d[0] * k, dy, d[2] * k]), world[i]);
+        }
+      }
       if (s.ik && g) this.solveIK(s, g, i, world, pos, ikDone);
       if (s.thumbs && g) this.wrapThumb(s, g, i, world, pos);
     });

@@ -510,12 +510,6 @@ async function main() {
   };
   writeFileSync(join(OUT, 'catalog.json'), JSON.stringify(catalog));
   copyFileSync(join(ROOT, 'scripts/ASSETS_LICENSE.txt'), join(OUT, 'LICENSE.txt'));
-  // Motion-capture test clips (CMU BVH files placed in vendor/mocap/cmu), if present.
-  const mocap = join(ROOT, 'vendor/mocap/cmu');
-  if (existsSync(mocap)) {
-    mkdirSync(join(OUT, 'mocap'), { recursive: true });
-    for (const f of readdirSync(mocap).filter((f) => f.endsWith('.bvh'))) copyFileSync(join(mocap, f), join(OUT, 'mocap', f));
-  }
   log(
     `catalog: ${outfits.length} outfits, ${shoes.length} shoes, ${hats.length} hats, ${catalog.hair.length} hair, ` +
       `${catalog.eyebrows.length} eyebrows, ${catalog.eyelashes.length} eyelashes, ${eyes.length} eye colours, ` +

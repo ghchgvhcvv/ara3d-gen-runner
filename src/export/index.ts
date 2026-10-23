@@ -24,6 +24,10 @@ export const fileStem = stemOf;
 const LICENSE = `Character assets derive from MakeHuman (makehumancommunity.org), released as
 CC0 1.0 (public domain) by Data Collection AB, Joel Palmius and Jonas Hauquier.
 Free for commercial and non-commercial use, no attribution required.
+
+The Idle, Walk, Run, Walk backwards, Strafe left/right, Jump, Low punch, Wave and Cry animations are retargeted from the CMU Graphics Lab Motion Capture
+Database (mocap.cs.cmu.edu; created with funding from NSF EIA-0196217). They may be used in
+commercial and non-commercial products; the motion data itself may not be resold on its own.
 `;
 
 async function loadTextures(lib: AssetLibrary, ch: Character): Promise<Map<string, Uint8Array>> {

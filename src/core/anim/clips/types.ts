@@ -60,7 +60,7 @@ export interface Sample {
   mocap?: import('../mocap').MocapSample;
 }
 
-export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter' | 'Vehicles' | 'Reactions' | 'Mocap (test)';
+export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter' | 'Vehicles' | 'Reactions';
 
 export interface Clip {
   id: string;

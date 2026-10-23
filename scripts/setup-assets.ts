@@ -10,6 +10,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Unzip, UnzipInflate } from 'fflate';
+import { MOCAP_FILES, MOCAP_SOURCE, MOCAP_TAKES } from './mocap-takes';
 
 const ROOT = join(import.meta.dirname, '..');
 const VENDOR = join(ROOT, 'vendor');
@@ -98,7 +99,27 @@ async function fetchSystemAssets() {
   await unzip(zip, sys);
 }
 
+/**
+ * CMU motion-capture takes (vendor/mocap/cmu). Only needed to rebuild the clip data with
+ * `npm run build-mocap`; the baked data is committed, so a failed download isn't fatal.
+ */
+async function fetchMocap() {
+  const dir = join(VENDOR, 'mocap', 'cmu');
+  const missing = [...new Set(MOCAP_TAKES.map((t) => t.take))].filter((t) => !existsSync(join(dir, `${t}.bvh`)));
+  if (!missing.length) return log('Motion capture: already present');
+  try {
+    for (const take of missing) {
+      const zip = join(VENDOR, 'dl', 'mocap', `${take}.zip`);
+      await download(`${MOCAP_SOURCE}/${MOCAP_FILES[take]}`, zip);
+      await unzip(zip, dir);
+    }
+  } catch (e) {
+    log(`Motion capture: download failed (${(e as Error).message}); only needed for npm run build-mocap`);
+  }
+}
+
 fetchMakeHumanData();
 await fetchSystemAssets();
+await fetchMocap();
 log('building public/assets…');
 await import('./build-assets');
