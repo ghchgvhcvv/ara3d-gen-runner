@@ -613,6 +613,7 @@ function renderExport() {
       select([['A', 'A-pose (natural)'], ['T', 'T-pose (Mixamo / Unity Humanoid)']], params.restPose, (v) => set({ restPose: v as 'A' | 'T' }))));
     kids.push(check('Facial bones (jaw + eyes)', params.faceBones, (v) => set({ faceBones: v })));
     kids.push(check('Facial blend shapes (expressions, blinking)', params.faceShapes, (v) => set({ faceShapes: v })));
+    if (params.faceShapes) kids.push(check('Speech mouth shapes (visemes, ~0.7 MB)', params.speechShapes, (v) => set({ speechShapes: v })));
     if (current.rig) kids.push(el('div', { className: 'rig-status', textContent: `✓ Auto-rigged: ${current.rig.bones.length} bones · ${current.rig.restPose}-pose bind · 4 weights per vertex` }));
   }
 

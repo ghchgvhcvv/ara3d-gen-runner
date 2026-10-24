@@ -1,6 +1,8 @@
-/** Emotes: wave, cheer and laugh (cry is motion capture: see mocap-data.ts). */
+/** Emotes: wave, cheer, laugh and talk (cry is motion capture: see mocap-data.ts). */
 import { type Ch, type Clip } from './types';
 import { fingers, fist, FISTS, side, v } from './helpers';
+import { idle } from './basic';
+import { speechStress, TALK_LEN } from './speech';
 
 export const wave: Clip = {
   id: 'wave', name: 'Wave', category: 'Emotes', duration: 1.6, loop: true,
@@ -77,6 +79,24 @@ export const laugh: Clip = {
       root: { ground: true },
       // Right hand resting on the belly.
       ik: { Right: { pos: v(-0.06, -0.5 + 0.01 * ha, 0.2), pole: v(-1, -0.6, -0.4), dir: v(1, -0.2, 0.2), palm: v(0, 0, -1) } },
+    };
+  },
+};
+
+/** Talking: the idle stance with the head nodding and tilting on stressed syllables (the mouth is in faces.ts). */
+export const talk: Clip = {
+  id: 'talk', name: 'Talk', category: 'Emotes', duration: TALK_LEN, loop: true,
+  sample: (t) => {
+    const s = idle.sample((t / TALK_LEN) * idle.duration * 2);
+    const st = speechStress(t), a = (t / TALK_LEN) * Math.PI * 2;
+    const head = s.bones.Head ?? [0, 0, 0], neck = s.bones.Neck ?? [0, 0, 0];
+    return {
+      ...s,
+      bones: {
+        ...s.bones,
+        Neck: [neck[0] + 2 * st, neck[1], neck[2]],
+        Head: [head[0] + 4 * st - 1.5 * Math.sin(a * 3), head[1] + 4 * Math.sin(a * 2 + 0.6), head[2] + 3 * Math.sin(a + 1.3) * (0.4 + st)],
+      },
     };
   },
 };

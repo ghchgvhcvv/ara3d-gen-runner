@@ -17,7 +17,7 @@ import { applyTargets, targetWeights } from './morph';
 import type { Pack } from './pack';
 import { ageToYears, type HumanParams } from './params';
 import { buildLooks } from './looks';
-import { calibrateBlinks, EXPRESSION_WEIGHTS, FACE_SHAPE_NAMES, faceDeltas, faceShapeDelta, sealLips, weightsArray } from './face';
+import { calibrateBlinks, EXPRESSION_WEIGHTS, faceDeltas, faceShapeDelta, faceShapeNames, sealLips, weightsArray } from './face';
 
 export interface Character {
   params: HumanParams;
@@ -112,7 +112,7 @@ function proxyMesh(proxy: Pack<ProxyMeta>, coords: Float32Array, skin?: Skin, de
  */
 function mouthPart(
   proxy: Pack<ProxyMeta>, coords: Float32Array, kind: 'teeth' | 'tongue',
-  jaw: { pivot: Vec3; chin: Vec3; chinDelta: Vec3 } | undefined, shapes: number, jawShape: number,
+  jaw: { pivot: Vec3; chin: Vec3; chinDeltas: Vec3[] } | undefined,
   bones?: { head: number; jaw: number },
 ): PolyMesh {
   const a = proxy.arrays as { faceSizes: Uint8Array; faceVerts: Uint32Array; faceUVs: Uint32Array; uvs: Float32Array };
@@ -142,20 +142,24 @@ function mouthPart(
     }
   }
   let morphs: Float32Array[] | undefined;
-  if (jaw && shapes) {
-    morphs = Array.from({ length: shapes }, () => new Float32Array(n * 3));
-    // Jaw rotation about the lateral (X) axis through the hinge that moves the chin by chinDelta.
-    const r0 = [jaw.chin[1] - jaw.pivot[1], jaw.chin[2] - jaw.pivot[2]];
-    const r1 = [r0[0] + jaw.chinDelta[1], r0[1] + jaw.chinDelta[2]];
-    const ang = Math.atan2(r0[0] * r1[1] - r0[1] * r1[0], r0[0] * r1[0] + r0[1] * r1[1]);
-    const cs = Math.cos(ang), sn = Math.sin(ang);
-    const d = morphs[jawShape];
-    for (let v = 0; v < n; v++) {
-      if (!lower[v]) continue;
-      const y = positions[v * 3 + 1] - jaw.pivot[1], z = positions[v * 3 + 2] - jaw.pivot[2];
-      d[v * 3 + 1] = y * cs - z * sn - y;
-      d[v * 3 + 2] = y * sn + z * cs - z;
-    }
+  if (jaw?.chinDeltas.length) {
+    morphs = jaw.chinDeltas.map((chinDelta) => {
+      const d = new Float32Array(n * 3);
+      // Each shape's jaw rotation: about the lateral (X) axis through the hinge, moving the chin by
+      // the shape's chin offset (lip-only shapes barely move it, so the teeth stay put).
+      const r0 = [jaw.chin[1] - jaw.pivot[1], jaw.chin[2] - jaw.pivot[2]];
+      const r1 = [r0[0] + chinDelta[1], r0[1] + chinDelta[2]];
+      const ang = Math.atan2(r0[0] * r1[1] - r0[1] * r1[0], r0[0] * r1[0] + r0[1] * r1[1]);
+      if (Math.abs(ang) < 0.005) return d; // under 0.3 degrees
+      const cs = Math.cos(ang), sn = Math.sin(ang);
+      for (let v = 0; v < n; v++) {
+        if (!lower[v]) continue;
+        const y = positions[v * 3 + 1] - jaw.pivot[1], z = positions[v * 3 + 2] - jaw.pivot[2];
+        d[v * 3 + 1] = y * cs - z * sn - y;
+        d[v * 3 + 2] = y * sn + z * cs - z;
+      }
+      return d;
+    });
   }
   let skin: Skin | undefined;
   if (bones) {
@@ -225,8 +229,9 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
     sealLips(coords, () => faceShapeDelta(lib, p, 'mouthUpperUp'), (c) => fit(pTeeth, c), Uint32Array.from(tris), lib.base.arrays.faceVerts as Uint32Array);
   }
   // Facial blend shapes (base-mesh offsets). Without them, the expression is baked into the face.
-  const exprWeights = weightsArray(EXPRESSION_WEIGHTS[p.expression] ?? {});
-  let faceD: Float32Array[] | undefined = p.faceShapes || exprWeights.some((w) => w) ? faceDeltas(lib, p) : undefined;
+  const shapeNames = faceShapeNames(p.speechShapes !== false);
+  const exprWeights = weightsArray(EXPRESSION_WEIGHTS[p.expression] ?? {}, shapeNames);
+  let faceD: Float32Array[] | undefined = p.faceShapes || exprWeights.some((w) => w) ? faceDeltas(lib, p, shapeNames) : undefined;
   if (faceD) {
     const ea = pEyes.arrays as Record<string, Uint8Array & Uint32Array>;
     calibrateBlinks(faceD, coords, lib.base.arrays.faceVerts as Uint32Array, { positions: fit(pEyes, coords), faceSizes: ea.faceSizes, faceVerts: ea.faceVerts });
@@ -297,28 +302,29 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
   if (pBrows && brows) parts.push([proxyMesh(pBrows, coords, bskin, faceD), { ...toMaterial(brows.material!), name: 'Eyebrows' }]);
   if (pLashes && lashes) parts.push([proxyMesh(pLashes, coords, bskin, faceD), { ...toMaterial(lashes.material!), name: 'Eyelashes' }]);
   // Mouth interior: hidden behind the lips until the mouth opens.
-  const jawShape = FACE_SHAPE_NAMES.indexOf('jawOpen');
   const jawJoint = (name: string): Vec3 => {
     const idx = lib.base.meta.joints[name];
     const s: Vec3 = [0, 0, 0];
     for (const v of idx) for (let k = 0; k < 3; k++) s[k] += coords[v * 3 + k] / idx.length;
     return s;
   };
-  let jawInfo: { pivot: Vec3; chin: Vec3; chinDelta: Vec3 } | undefined;
+  let jawInfo: { pivot: Vec3; chin: Vec3; chinDeltas: Vec3[] } | undefined;
   if (faceD) {
     const chinIdx = lib.base.meta.joints['jaw____tail'];
-    const cd: Vec3 = [0, 0, 0];
-    for (const v of chinIdx) for (let k = 0; k < 3; k++) cd[k] += faceD[jawShape][v * 3 + k] / chinIdx.length;
-    jawInfo = { pivot: jawJoint('jaw____head'), chin: jawJoint('jaw____tail'), chinDelta: cd };
+    const chinDeltas = faceD.map((d) => {
+      const cd: Vec3 = [0, 0, 0];
+      for (const v of chinIdx) for (let k = 0; k < 3; k++) cd[k] += d[v * 3 + k] / chinIdx.length;
+      return cd;
+    });
+    jawInfo = { pivot: jawJoint('jaw____head'), chin: jawJoint('jaw____tail'), chinDeltas };
   }
   const headBone = defs.findIndex((d) => d.name === 'Head' || d.name === 'head');
   const jawBone = defs.findIndex((d) => d.name === 'Jaw' || d.name === 'jaw');
   const mouthBones = rigged && headBone >= 0 ? { head: headBone, jaw: jawBone >= 0 ? jawBone : headBone } : undefined;
-  const nShapes = faceD?.length ?? 0;
   if (pTeeth && teethItem)
-    parts.push([mouthPart(pTeeth, coords, 'teeth', jawInfo, nShapes, jawShape, mouthBones), { ...toMaterial(teethItem.material!), name: 'Teeth', color: '#f4efe6', roughness: 0.3, alpha: 'opaque' }]);
+    parts.push([mouthPart(pTeeth, coords, 'teeth', jawInfo, mouthBones), { ...toMaterial(teethItem.material!), name: 'Teeth', color: '#f4efe6', roughness: 0.3, alpha: 'opaque' }]);
   if (pTongue && tongueItem)
-    parts.push([mouthPart(pTongue, coords, 'tongue', jawInfo, nShapes, jawShape, mouthBones), { ...toMaterial(tongueItem.material!), name: 'Tongue', roughness: 0.4, alpha: 'opaque' }]);
+    parts.push([mouthPart(pTongue, coords, 'tongue', jawInfo, mouthBones), { ...toMaterial(tongueItem.material!), name: 'Tongue', roughness: 0.4, alpha: 'opaque' }]);
   const groundParts: PolyMesh[] = [];
   if (pShoes && shoesItem) {
     const m = proxyMesh(pShoes, coords, bskin, faceD);
@@ -451,7 +457,7 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
   }
 
   stage('Assembling mesh');
-  const faceInfo = faceD ? { names: FACE_SHAPE_NAMES, defaults: exprWeights } : undefined;
+  const faceInfo = faceD ? { names: shapeNames, defaults: exprWeights } : undefined;
   const asm = new MeshAssembler(faceInfo);
   for (const [m, mat] of out) asm.add(m, mat);
   return { params: p, mesh: asm.build(), rig, weapon, height: (maxBodyY - minY) * DM, face: faceInfo };

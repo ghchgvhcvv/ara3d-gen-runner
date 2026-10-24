@@ -37,6 +37,22 @@ export const FACE_SHAPES: FaceShape[] = [
   { name: 'noseSneerLeft', units: [['nose-left-elevation', 1]] },
   { name: 'noseSneerRight', units: [['nose-right-elevation', 1]] },
   { name: 'mouthUpperUp', units: [['mouth-part-later', 1]] },
+  // Speech mouth shapes (visemes), Oculus/Meta naming as used by lip-sync tools. Rest ("sil") is
+  // every shape at zero. Built from MakeHuman's mouth units; the jaw follows 'mouth-open'.
+  { name: 'viseme_PP', units: [['mouth-compression', 0.8], ['mouth-pursing', 0.1]] },
+  { name: 'viseme_FF', units: [['mouth-part-later', 0.35], ['mouth-eversion', -0.5], ['mouth-open', 0.05]] },
+  { name: 'viseme_TH', units: [['mouth-open', 0.25], ['mouth-parling', 0.25]] },
+  { name: 'viseme_DD', units: [['mouth-open', 0.28], ['mouth-parling', 0.2], ['mouth-retraction', 0.2]] },
+  { name: 'viseme_kk', units: [['mouth-open', 0.38], ['mouth-retraction', 0.25]] },
+  { name: 'viseme_CH', units: [['mouth-protusion', 0.8], ['mouth-open', 0.08]] },
+  { name: 'viseme_SS', units: [['mouth-retraction', 0.5], ['mouth-upward-retraction', 0.5]] },
+  { name: 'viseme_nn', units: [['mouth-open', 0.22], ['mouth-parling', 0.15]] },
+  { name: 'viseme_RR', units: [['mouth-protusion', 0.5], ['mouth-pursing', 0.45], ['mouth-open', 0.15]] },
+  { name: 'viseme_aa', units: [['mouth-open', 0.85]] },
+  { name: 'viseme_E', units: [['mouth-open', 0.35], ['mouth-retraction', 0.45], ['mouth-upward-retraction', 0.15]] },
+  { name: 'viseme_I', units: [['mouth-open', 0.15], ['mouth-retraction', 0.55], ['mouth-corner-puller', 0.25], ['mouth-upward-retraction', 0.15]] },
+  { name: 'viseme_O', units: [['mouth-open', 0.45], ['mouth-pursing', 0.7], ['mouth-protusion', 0.4]] },
+  { name: 'viseme_U', units: [['mouth-pursing', 0.9], ['mouth-protusion', 0.4], ['mouth-open', 0.08]] },
 ];
 export const FACE_SHAPE_NAMES = FACE_SHAPES.map((s) => s.name);
 export type FaceWeights = Partial<Record<string, number>>;
@@ -60,17 +76,23 @@ export const EXPRESSION_WEIGHTS: Record<ExpressionId, FaceWeights> = {
   determined: { browDownLeft: 0.65, browDownRight: 0.65, mouthPress: 0.55, eyeSquintLeft: 0.3, eyeSquintRight: 0.3 },
 };
 
-/** Weights in FACE_SHAPES order. */
-export function weightsArray(w: FaceWeights): number[] {
-  return FACE_SHAPE_NAMES.map((n) => w[n] ?? 0);
+/** The shapes a character gets: all, or without the speech shapes (they come last, so the other
+ * shapes keep their indices). */
+export function faceShapeNames(speech: boolean): string[] {
+  return speech ? FACE_SHAPE_NAMES : FACE_SHAPE_NAMES.filter((n) => !n.startsWith('viseme_'));
+}
+
+/** Weights in `names` order (default: every shape). */
+export function weightsArray(w: FaceWeights, names = FACE_SHAPE_NAMES): number[] {
+  return names.map((n) => w[n] ?? 0);
 }
 
 /**
  * Per-shape vertex offsets on the base mesh (decimetres), blended by the character's ethnicity
- * mix. Returns one Float32Array (vertexCount * 3) per FACE_SHAPES entry.
+ * mix. Returns one Float32Array (vertexCount * 3) per shape in `names` (default: every shape).
  */
-export function faceDeltas(lib: AssetLibrary, p: HumanParams): Float32Array[] {
-  return FACE_SHAPES.map((shape) => shapeDelta(lib, p, shape));
+export function faceDeltas(lib: AssetLibrary, p: HumanParams, names = FACE_SHAPE_NAMES): Float32Array[] {
+  return names.map((n) => faceShapeDelta(lib, p, n));
 }
 
 /** One face shape's offsets (see faceDeltas), by name. */

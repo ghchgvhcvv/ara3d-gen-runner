@@ -6,7 +6,7 @@
 
 **▶ Try it online: [ara3dgen.com](https://ara3dgen.com)**, or self-host it (below).
 
-Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 63 animations, and export **GLB, FBX, OBJ or a ZIP bundle**. It runs entirely on your machine, in the browser or headless from the command line, with no accounts, credits or limits.
+Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 64 animations, and export **GLB, FBX, OBJ or a ZIP bundle**. It runs entirely on your machine, in the browser or headless from the command line, with no accounts, credits or limits.
 
 ![Presets: African warrior, Yoruba warrior, cyberpunk hacker, Dahomey warrior, FRSC officer, police officer, wasteland survivor, adventurer](docs/media/presets.jpg)
 
@@ -37,7 +37,7 @@ Online character generators are convenient, but you rent them. Ara 3D Gen is you
 - **Clothing:** MakeHuman outfits, or mix-and-match tops, bottoms, wrappers, uniforms and 30+ accessories. Generated fabrics (kente, aso-oke, ankara, adire, camo, leather…), all recolourable.
 - **Hair and looks:** MakeHuman hairstyles plus buzz cut, punk mohawk, cornrows and box braids. Stubble, mustache, goatee and beards. Tattoos. Earrings.
 - **Auto-rigging:** game rig (Mixamo bone names; Unity Humanoid / Unreal / Mixamo compatible), lite or full skeleton, A- or T-pose, optional face bones, a `WeaponR` socket.
-- **63 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. Walk, run, strafes, jump, low punch and cry are motion capture (CMU), retargeted onto every body; the rest are keyframed. One evaluator drives the preview and the exports, so what you see is what you export.
+- **64 animations:** locomotion, turns, jumps, combat, emotes, a full shooter set, melee, and vehicles (car, bicycle, motorcycle, horse, canoe, kayak, rowing boat, boat helm), with optional root motion. Walk, run, strafes, jump, low punch and cry are motion capture (CMU), retargeted onto every body; the rest are keyframed. One evaluator drives the preview and the exports, so what you see is what you export.
 - **Weapons:** rifle, pistol, sword and knife, held on the socket. Export them in the hand or as separate props.
 - **Exports you can trust:** an export panel that lists every file before you download it: static, rigged, or rigged + animations; one file or one per clip; Unity `model@clip` and Godot loop naming.
 - **Share:** one click gives a branded image of your character, a caption and a link that rebuilds the exact character in the app (no server or account needed), with buttons for X, Facebook, LinkedIn, WhatsApp, Reddit and Telegram, plus the system share sheet on phones.
@@ -184,15 +184,27 @@ Tattoos, stubble and shaved scalps are painted into one RGBA "Skin details" text
 
 ## Faces and expressions
 
-Every character has **20 facial blend shapes** (morph targets) built from MakeHuman's CC0 expression data and blended by the character's ethnicity mix, so they fit every face. Names follow Apple's ARKit convention where they match: `eyeBlinkLeft/Right`, `eyeWideLeft/Right`, `eyeSquintLeft/Right`, `browDownLeft/Right`, `browInnerUp`, `browOuterUpLeft/Right`, `jawOpen`, `mouthSmile`, `mouthFrown`, `mouthPucker`, `mouthPress`, `mouthStretch`, `mouthUpperUp`, `noseSneerLeft/Right`.
+Every character has **34 facial blend shapes** (morph targets): 20 for expressions and 14 for speech, built from MakeHuman's CC0 expression data and blended by the character's ethnicity mix, so they fit every face. Names follow Apple's ARKit convention where they match: `eyeBlinkLeft/Right`, `eyeWideLeft/Right`, `eyeSquintLeft/Right`, `browDownLeft/Right`, `browInnerUp`, `browOuterUpLeft/Right`, `jawOpen`, `mouthSmile`, `mouthFrown`, `mouthPucker`, `mouthPress`, `mouthStretch`, `mouthUpperUp`, `noseSneerLeft/Right`. The speech shapes are listed under *Talking and lip-sync* below.
 
 - **Expressions:** neutral, happy, laughing, angry, sad, crying, surprised, afraid, determined. The chosen expression is the resting face in the viewer and in every exported clip: the blend shapes' default weights in GLB and FBX, baked into the mesh for OBJ.
-- **Teeth and tongue:** MakeHuman's CC0 teeth (six variants, picked under *Expression*) and tongue. The upper teeth are fixed to the skull. The lower teeth and the tongue rotate with the jaw when `jawOpen` plays, and are skinned to the Jaw bone, so they also follow an animated jaw in an engine.
+- **Teeth and tongue:** MakeHuman's CC0 teeth (six variants, picked under *Expression*) and tongue. The upper teeth are fixed to the skull. The lower teeth and the tongue rotate with the jaw whenever a shape opens it (`jawOpen`, the open speech shapes), and are skinned to the Jaw bone, so they also follow an animated jaw in an engine. Faces that rest with the lips slightly apart get them closed, so a neutral face never shows the teeth.
 - **A living face:** clips blink and glance around with the eye bones. Many also show the action on the face: effort when jumping or getting up, pain when hit, a squinting aiming eye with rifles and pistols, smiles when waving, cheering and laughing, sobbing when crying, and half-closed eyes after a death.
 - **Blinks close fully on every face:** each character's blink is calibrated so the lids just meet (MakeHuman's closure overshoots and folds the lid otherwise).
 - **Exports:** GLB has sparse morph targets with `extras.targetNames` and animated `weights`. FBX has a BlendShape deformer with one channel per shape and `DeformPercent` curves. Blender, Unity, Unreal, Godot and three.js read both.
 - **Blinks in exported clips** sit inside clips of 1.8 s or longer, so loops stay seamless. The live preview blinks on every clip. In an engine, short loops (walk, run) can get blinks from a separate face layer.
-- Turn off *Facial blend shapes* in the Export panel to leave them out; the expression is then baked into the mesh.
+- Turn off *Facial blend shapes* in the Export panel to leave them out; the expression is then baked into the mesh. *Speech mouth shapes* can be left out on their own (about 0.7 MB per medium-detail GLB, 1.5 MB at high).
+
+### Talking and lip-sync
+
+The 14 speech shapes (visemes) use the Oculus / Meta names that lip-sync tools output: `viseme_PP` (M, B, P), `viseme_FF` (F, V), `viseme_TH`, `viseme_DD` (D, T), `viseme_kk` (K, G), `viseme_CH` (CH, J, SH), `viseme_SS` (S, Z), `viseme_nn` (N, L), `viseme_RR`, `viseme_aa`, `viseme_E`, `viseme_I`, `viseme_O`, `viseme_U`. Rest (`sil`) is every shape at zero. The jaw, lower teeth and tongue open with them. The **Talk** clip (Emotes) loops a stretch of babble with head nods and brow raises on stressed syllables, for background chatter and previews.
+
+To lip-sync real dialogue, drive the shapes from audio:
+
+- **Tools that output Oculus visemes** (for example Meta's lip-sync plugin for Unity and Unreal, or Ready Player Me-style pipelines): map each viseme to the blend shape of the same name, `viseme_<name>`.
+- **Rhubarb Lip Sync** (offline, from an audio file; works with any engine, including Godot): its mouth cues map as A → `viseme_PP`, B → `viseme_kk` (or `viseme_SS`), C → `viseme_E`, D → `viseme_aa`, E → `viseme_O`, F → `viseme_U`, G → `viseme_FF`, H → `viseme_nn`, X → rest.
+- **Vowel-based tools** (for example uLipSync in Unity, which detects A, I, U, E, O and N): map A → `viseme_aa`, I → `viseme_I`, U → `viseme_U`, E → `viseme_E`, O → `viseme_O`, N → `viseme_nn`.
+
+Blend between shapes over about 50–80 ms rather than switching, and keep each weight at 1 or below; the Talk clip does the same.
 
 ## Rigging
 
@@ -242,7 +254,7 @@ The character loads playing **Idle**, a rigged idle with relaxed arms. The anima
 | Idle & stance | Idle, Crouch idle (loops) |
 | Locomotion | Walk, Run, Walk backwards, Strafe left/right (loops; in place, or with root motion) |
 | Actions | Jump, Fall, Punch, Low punch, Hit reaction (one-shots); Jump start, Jump (in air) (loop), Jump land and Running jump, split for engine character controllers |
-| Emotes | Wave, Cheer, Laugh, Cry (loops) |
+| Emotes | Wave, Cheer, Laugh, Cry, Talk (loops) |
 | Turns | Left/right 45° and 90°, full 360° (one-shots: hip yaw with stepping feet) |
 | Shooter | Pistol idle (low ready), pistol aim, pistol fire; rifle idle (low ready), aim idle, fire single, fire full-auto, reload, aiming walk / walk back / strafe left / strafe right, rifle run, sprint, crouch aim, crouch walk; throw grenade |
 | Reactions | Hit from front / back / left / right, knockdown, death (fall forward), death (fall backward), get up (from back), get up (from front) (one-shots). Knockdown ends where Get up (from back) starts, and Death (fall forward) ends where Get up (from front) starts, so they chain without a pop |
