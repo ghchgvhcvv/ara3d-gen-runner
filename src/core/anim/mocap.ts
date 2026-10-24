@@ -10,7 +10,7 @@
 import type { Vec3 } from '../math';
 import { fingers, fist } from './clips/helpers';
 import type { Ch, Clip, ClipCategory, Sample } from './clips/types';
-import { qaxis, qconj, qfromTo, qmul, qrot, type Q } from './quat';
+import { qaxis, qconj, qfromTo, qmul, qrot, qslerp, type Q } from './quat';
 
 interface BvhJoint {
   name: string;
@@ -197,7 +197,7 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
     const neutral = qconj([acc[0] / l, acc[1] / l, acc[2] / l, acc[3] / l]);
     poses.forEach((P, f) => {
       P.world[headJ] = qmul(P.world[chestJ], qmul(rel[f], neutral));
-      P.world[neckJ] = slerp(P.world[chestJ], P.world[headJ], 0.6);
+      P.world[neckJ] = qslerp(P.world[chestJ], P.world[headJ], 0.6);
     });
   }
   const mapped = bvh.joints.map((j, k) => [CMU_MAP[j.name], k] as const).filter(([g]) => !!g) as [string, number][];
@@ -343,9 +343,9 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
       const rot: Record<string, Q> = {};
       const tt = (fa - f0 + w) * ft;
       for (const [g, k] of mapped) {
-        const q = slerp(A.world[k], B.world[k], w);
+        const q = qslerp(A.world[k], B.world[k], w);
         const c = seam.get(k);
-        rot[g] = c ? qmul(slerp([0, 0, 0, 1], c, tt / duration), q) : q;
+        rot[g] = c ? qmul(qslerp([0, 0, 0, 1], c, tt / duration), q) : q;
       }
       const h = A.hips.map((v, d) => v + (B.hips[d] - v) * w);
       for (let d = 0; d < 3; d++) h[d] += (seamH[d] * tt) / duration;
@@ -447,7 +447,7 @@ export function clipFromMocap(d: MocapData, meta: { id: string; name: string; ca
       const x = (Math.max(0, Math.min(d.duration, t)) / d.duration) * last;
       const fa = Math.min(last, Math.floor(x)), fb = Math.min(last, fa + 1), w = x - fa;
       const rot: Record<string, Q> = {};
-      d.bones.forEach((g, b) => (rot[g] = slerp(q(fa, b), q(fb, b), w)));
+      d.bones.forEach((g, b) => (rot[g] = qslerp(q(fa, b), q(fb, b), w)));
       const hips = [0, 1, 2].map((k) => (H[fa * 3 + k] + (H[fb * 3 + k] - H[fa * 3 + k]) * w) / 10000) as Vec3;
       const mocap: MocapSample = { rot, dir: d.dir, bias, hips, key: meta.id, anchor };
       return { bones: { ...idle }, root: d.ground ? { ground: true } : {}, mocap };
@@ -480,19 +480,4 @@ function smooth(poses: { world: Q[]; hips: Vec3 }[], r: number): { world: Q[]; h
   });
 }
 
-function slerp(a: Q, b: Q, t: number): Q {
-  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-  const s = d < 0 ? -1 : 1;
-  d *= s;
-  if (d > 0.9995) {
-    const r: Q = [a[0] + (s * b[0] - a[0]) * t, a[1] + (s * b[1] - a[1]) * t, a[2] + (s * b[2] - a[2]) * t, a[3] + (s * b[3] - a[3]) * t];
-    const l = Math.hypot(...r);
-    return [r[0] / l, r[1] / l, r[2] / l, r[3] / l];
-  }
-  const th = Math.acos(d), sn = Math.sin(th);
-  const ka = Math.sin((1 - t) * th) / sn, kb = (Math.sin(t * th) / sn) * s;
-  const r: Q = [a[0] * ka + b[0] * kb, a[1] * ka + b[1] * kb, a[2] * ka + b[2] * kb, a[3] * ka + b[3] * kb];
-  const l = Math.hypot(...r);
-  return [r[0] / l, r[1] / l, r[2] / l, r[3] / l];
-}
 

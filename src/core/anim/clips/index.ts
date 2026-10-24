@@ -19,8 +19,19 @@ export * from './types';
 
 /** Motion-captured clips (CMU, see clips/mocap-data.ts); the rest are keyframed. */
 const mocap = (id: string, name: string, category: Clip['category']): Clip => clipFromMocap(MOCAP_DATA[id], { id, name, category });
+/** A clip that starts from another clip's first pose and eases into its own over `over` seconds. */
+const easeFrom = (c: Clip, from: Clip, over: number): Clip => ({
+  ...c,
+  sample: (t) => {
+    const s = c.sample(t), x = Math.min(1, t / over), w = 1 - x * x * (3 - 2 * x);
+    return w > 0 ? { ...s, blend: { sample: from.sample(0), w } } : s;
+  },
+});
 /** A clip played backwards (Stand up is Sit down in reverse, so it ends where Sit down began). */
 const reversed = (c: Clip, id: string, name: string): Clip => ({ ...c, id, name, sample: (t) => c.sample(c.duration - t) });
+
+// Sitting starts from Idle; Stand up (its reverse) therefore ends in Idle.
+const SIT_DOWN = easeFrom(mocap('sit_down', 'Sit down (chair)', 'Sitting & lying'), idle, 0.7);
 
 export const CLIPS: Clip[] = withFaces(
   [
@@ -47,9 +58,9 @@ export const CLIPS: Clip[] = withFaces(
     laugh,
     talk,
     mocap('cry', 'Cry', 'Emotes'),
-    mocap('sit_down', 'Sit down (chair)', 'Sitting & lying'),
+    SIT_DOWN,
     mocap('sit_idle', 'Sit idle (chair)', 'Sitting & lying'),
-    reversed(mocap('sit_down', 'Sit down (chair)', 'Sitting & lying'), 'stand_up', 'Stand up (chair)'),
+    reversed(SIT_DOWN, 'stand_up', 'Stand up (chair)'),
     lieDown,
     sleep,
     turn('turn_left_45', 'Turn left 45°', 45),

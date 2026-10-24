@@ -340,7 +340,7 @@ for (const [label, p] of cases) {
       }
     // Chained clips meet where they join (largest joint gap under 3 cm).
     if (ch.rig && label.startsWith('rig'))
-      for (const [a, b] of [['sit_down', 'sit_idle'], ['sit_idle', 'stand_up'], ['lie_down', 'sleep'], ['sleep', 'get_up_face_up']]) {
+      for (const [a, b] of [['idle', 'sit_down'], ['stand_up', 'idle'], ['sit_down', 'sit_idle'], ['sit_idle', 'stand_up'], ['lie_down', 'sleep'], ['sleep', 'get_up_face_up']]) {
         const A = new Animator(ch.rig), ca = clipById.get(a)!, cb = clipById.get(b)!;
         const pa = A.positions(A.frame(ca, ca.duration)), pb = A.positions(A.frame(cb, 0));
         const gap = Math.max(...pa.map((p, k) => Math.hypot(p[0] - pb[k][0], p[1] - pb[k][1], p[2] - pb[k][2])));

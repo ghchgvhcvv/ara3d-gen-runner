@@ -463,10 +463,12 @@ const playClip = (id: string) => {
   activeClip = id;
   viewer.play(id === 'bind' ? null : clipById.get(id) ?? null);
   animButtons.forEach((b, k) => b.classList.toggle('on', k === id));
-  more.value = QUICK.includes(id) ? '' : id;
-  more.classList.toggle('on', !QUICK.includes(id));
+  const other = !QUICK.includes(id);
+  browseBtn.classList.toggle('on', other);
+  browseLabel.textContent = other ? clipById.get(id)!.name : 'All animations';
+  browser.sync();
 };
-// Quick buttons for the most common clips, everything else in a grouped dropdown.
+// Quick buttons for the most common clips; everything else in the animation browser.
 const QUICK = ['bind', 'idle', 'walk', 'run'];
 for (const id of QUICK) {
   const b = el('button', { textContent: id === 'bind' ? 'Bind pose' : clipById.get(id)!.name });
@@ -474,15 +476,82 @@ for (const id of QUICK) {
   animButtons.set(id, b);
   animBar.append(b);
 }
-const more = el('select', { title: 'All animations' });
-more.append(new Option('More animations…', ''));
-for (const cat of [...new Set(CLIPS.map((c) => c.category))]) {
-  const g = el('optgroup', { label: cat });
-  for (const c of CLIPS.filter((x) => x.category === cat && !QUICK.includes(x.id))) g.append(new Option(c.name, c.id));
-  more.append(g);
-}
-more.addEventListener('change', () => more.value && playClip(more.value));
-animBar.append(more);
+// Previous / next step through every clip in list order.
+const step = (d: number) => {
+  const i = CLIPS.findIndex((c) => c.id === activeClip);
+  playClip(CLIPS[(i + d + CLIPS.length) % CLIPS.length].id);
+};
+const prevBtn = el('button', { className: 'anim-step', textContent: '‹', title: 'Previous animation' });
+const nextBtn = el('button', { className: 'anim-step', textContent: '›', title: 'Next animation' });
+prevBtn.addEventListener('click', () => step(-1));
+nextBtn.addEventListener('click', () => step(1));
+const browseLabel = el('span', { textContent: 'All animations' });
+const browseBtn = el('button', { className: 'anim-browse', title: `Browse all ${CLIPS.length} animations` }, browseLabel, el('span', { className: 'caret', textContent: '▾' }));
+animBar.append(prevBtn, browseBtn, nextBtn);
+
+/** Animation browser: search, category tabs and a grid of every clip. */
+const browser = (() => {
+  const pop = el('div', { id: 'anim-pop', role: 'dialog', ariaLabel: 'Animations' });
+  pop.setAttribute('aria-hidden', 'true');
+  const search = el('input', { type: 'search', placeholder: `Search ${CLIPS.length} animations…`, className: 'anim-search' });
+  const close = el('button', { className: 'anim-close', textContent: '×', title: 'Close' });
+  const tabs = el('div', { className: 'anim-tabs', role: 'tablist' });
+  const grid = el('div', { className: 'anim-grid' });
+  const cats = [...new Set(CLIPS.map((c) => c.category))];
+  let cat = 'All';
+  const tabButtons = new Map<string, HTMLButtonElement>();
+  for (const c of ['All', ...cats]) {
+    const n = c === 'All' ? CLIPS.length : CLIPS.filter((x) => x.category === c).length;
+    const b = el('button', { className: 'anim-tab', role: 'tab' }, c, el('span', { className: 'n', textContent: String(n) }));
+    b.addEventListener('click', () => { cat = c; render(); });
+    tabButtons.set(c, b);
+    tabs.append(b);
+  }
+  const clipButton = (c: (typeof CLIPS)[number]) => {
+    const b = el('button', { className: 'anim-clip', title: `${c.name} · ${c.duration.toFixed(1)} s${c.loop ? ', loops' : ''}` },
+      el('span', { textContent: c.name }), c.loop ? el('span', { className: 'loop', textContent: '↻', title: 'Loops' }) : '');
+    b.dataset.id = c.id;
+    b.classList.toggle('on', c.id === activeClip);
+    b.addEventListener('click', () => playClip(c.id));
+    return b;
+  };
+  function render() {
+    tabButtons.forEach((b, k) => { b.classList.toggle('on', k === cat); b.setAttribute('aria-selected', String(k === cat)); });
+    const q = search.value.trim().toLowerCase();
+    const match = (c: (typeof CLIPS)[number]) => !q || c.name.toLowerCase().includes(q) || c.category.toLowerCase().includes(q) || c.id.includes(q);
+    grid.replaceChildren();
+    const groups = q || cat !== 'All' ? [[q ? 'Results' : cat, CLIPS.filter((c) => (q || c.category === cat) && match(c))] as const] : cats.map((k) => [k, CLIPS.filter((c) => c.category === k)] as const);
+    for (const [name, list] of groups) {
+      if (!list.length) continue;
+      if (groups.length > 1) grid.append(el('div', { className: 'anim-group', textContent: name }));
+      for (const c of list) grid.append(clipButton(c));
+    }
+    if (!grid.childElementCount) grid.append(el('div', { className: 'hint', textContent: 'No animations match.' }));
+  }
+  search.addEventListener('input', () => render());
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') (grid.querySelector('.anim-clip') as HTMLButtonElement | null)?.click();
+    if (e.key === 'Escape') toggle(false);
+  });
+  const isOpen = () => pop.classList.contains('open');
+  const toggle = (open = !isOpen()) => {
+    pop.classList.toggle('open', open);
+    pop.setAttribute('aria-hidden', String(!open));
+    browseBtn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      render();
+      search.focus({ preventScroll: true });
+      grid.querySelector('.anim-clip.on')?.scrollIntoView({ block: 'nearest' });
+    }
+  };
+  browseBtn.addEventListener('click', () => toggle());
+  close.addEventListener('click', () => toggle(false));
+  // Stays open while browsing (the character remains in view); Esc, × or the button close it.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen()) toggle(false); });
+  pop.append(el('div', { className: 'anim-pop-head' }, el('span', { className: 'anim-pop-title', textContent: 'Animations' }), close), search, tabs, grid);
+  animBar.after(pop);
+  return { sync: () => grid.querySelectorAll<HTMLButtonElement>('.anim-clip').forEach((b) => b.classList.toggle('on', b.dataset.id === activeClip)) };
+})();
 const rmBox = el('input', { type: 'checkbox' });
 rmBox.addEventListener('change', () => setExport({ rootMotion: rmBox.checked }));
 viewer.rootMotion = exportSettings.rootMotion;

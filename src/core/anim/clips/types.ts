@@ -58,6 +58,9 @@ export interface Sample {
   gaze?: [number, number];
   /** Motion capture (test): retargeted by the evaluator onto the rig (see anim/mocap.ts). */
   mocap?: import('../mocap').MocapSample;
+  /** Blend the solved pose toward another sample's (w: 0 = this pose, 1 = the other), e.g. easing a
+   * captured clip into a keyframed rest pose. */
+  blend?: { sample: Sample; w: number };
 }
 
 export type ClipCategory = 'Idle & stance' | 'Locomotion' | 'Turns' | 'Actions' | 'Emotes' | 'Shooter' | 'Vehicles' | 'Reactions' | 'Sitting & lying';

@@ -8,7 +8,7 @@ import type { Vec3 } from '../math';
 import { boneFor } from '../rig/poses';
 import { quatOf, type Rig } from '../rig/rig';
 import { clipById, type Ch, type Clip, type HandTarget, type Sample } from './clips';
-import { qaxis, qconj, qfromTo, QI, qmul, qrot, type Q } from './quat';
+import { qaxis, qconj, qfromTo, QI, qmul, qrot, type Q, qslerp } from './quat';
 
 export interface Frame {
   /** Local rotation per bone (relative to its parent), as exported / applied to three.js bones. */
@@ -289,6 +289,16 @@ export class Animator {
   }
 
   private frameOf(s: Sample, clip: Clip, time: number, opts: { rootMotion?: boolean; noSupport?: boolean }): Frame {
+    if (s.blend && s.blend.w > 0) {
+      const w = Math.min(1, s.blend.w);
+      const a = this.frameOf({ ...s, blend: undefined }, clip, time, opts), b = this.frameOf(s.blend.sample, clip, time, opts);
+      const rootPos = new Map<number, Vec3>();
+      for (const [i, p] of a.rootPos) {
+        const q = b.rootPos.get(i) ?? p;
+        rootPos.set(i, [p[0] + (q[0] - p[0]) * w, p[1] + (q[1] - p[1]) * w, p[2] + (q[2] - p[2]) * w]);
+      }
+      return { ...a, rot: a.rot.map((r, i) => qslerp(r, b.rot[i], w)), rootPos };
+    }
     const left = s.ik?.Left;
     if (left?.support && !opts.noSupport && this.socket >= 0) {
       // Two passes: solve without the support hand, see where the weapon ended up, then

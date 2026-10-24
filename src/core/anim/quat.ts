@@ -49,3 +49,20 @@ export function qToEulerXYZ(q: Q): Vec3 {
   if (Math.abs(r20) < 0.99999) return [Math.atan2(r21, r22) * deg, Math.asin(-r20) * deg, Math.atan2(r10, r00) * deg];
   return [Math.atan2(-r12, r11) * deg, r20 < 0 ? 90 : -90, 0];
 }
+
+/** Spherical interpolation between unit quaternions (shortest way), renormalised. */
+export function qslerp(a: Q, b: Q, t: number): Q {
+  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+  const s = d < 0 ? -1 : 1;
+  d *= s;
+  if (d > 0.9995) {
+    const r: Q = [a[0] + (s * b[0] - a[0]) * t, a[1] + (s * b[1] - a[1]) * t, a[2] + (s * b[2] - a[2]) * t, a[3] + (s * b[3] - a[3]) * t];
+    const l = Math.hypot(...r);
+    return [r[0] / l, r[1] / l, r[2] / l, r[3] / l];
+  }
+  const th = Math.acos(d), sn = Math.sin(th);
+  const ka = Math.sin((1 - t) * th) / sn, kb = (Math.sin(t * th) / sn) * s;
+  const r: Q = [a[0] * ka + b[0] * kb, a[1] * ka + b[1] * kb, a[2] * ka + b[2] * kb, a[3] * ka + b[3] * kb];
+  const l = Math.hypot(...r);
+  return [r[0] / l, r[1] / l, r[2] / l, r[3] / l];
+}
