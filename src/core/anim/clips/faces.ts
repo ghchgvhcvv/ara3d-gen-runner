@@ -49,6 +49,9 @@ const FACES: Record<string, FaceFn> = {
   hit_right: hitFace,
   wave: constant({ mouthSmile: 0.7, eyeSquintLeft: 0.25, eyeSquintRight: 0.25, browOuterUpLeft: 0.2, browOuterUpRight: 0.2 }),
   cheer: constant({ mouthSmile: 0.9, jawOpen: 0.4, eyeSquintLeft: 0.3, eyeSquintRight: 0.3 }),
+  // Asleep: eyes closed, face relaxed. Lying down settles into it.
+  sleep: constant({ eyeBlinkLeft: 1, eyeBlinkRight: 1 }),
+  lie_down: keyed([0, 0.7, 1], { ...both('eyeBlinkLeft', 'eyeBlinkRight', [0, 0, 0.6]) }),
   talk: (t) => {
     const st = speechStress(t);
     return { ...speechFace(t), browInnerUp: 0.25 * st, browOuterUpLeft: 0.3 * st, browOuterUpRight: 0.3 * st };

@@ -25,10 +25,10 @@ const LICENSE = `Character assets derive from MakeHuman (makehumancommunity.org)
 CC0 1.0 (public domain) by Data Collection AB, Joel Palmius and Jonas Hauquier.
 Free for commercial and non-commercial use, no attribution required.
 
-The Walk, Run, Strafe left/right, Jump, Low punch and Cry animations are retargeted from the
-CMU Graphics Lab Motion Capture Database (mocap.cs.cmu.edu; created with funding from NSF
-EIA-0196217). They may be used in commercial and non-commercial products; the motion data
-itself may not be resold on its own.
+The Walk, Slouch walk, Run, Strafe left/right, Jump, Low punch, Cry and the chair (sit down,
+sit idle, stand up) animations are retargeted from the CMU Graphics Lab Motion Capture
+Database (mocap.cs.cmu.edu; created with funding from NSF EIA-0196217). They may be used in
+commercial and non-commercial products; the motion data itself may not be resold on its own.
 `;
 
 async function loadTextures(lib: AssetLibrary, ch: Character): Promise<Map<string, Uint8Array>> {
