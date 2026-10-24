@@ -152,6 +152,10 @@ label.acc { flex-direction: row; align-items: center; gap: 8px; color: var(--tex
 #anim-bar button { padding: 4px 8px; font-size: 12px; }
 #anim-bar button.on { border-color: var(--accent); color: #fff; background: #2f3a55; }
 #anim-bar select { width: auto; padding: 3px 4px; font-size: 12px; }
+#anim-bar .anim-step { padding: 4px 7px; font-size: 14px; line-height: 1; }
+#anim-bar .anim-browse { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; }
+#anim-bar .anim-browse > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#anim-bar .anim-browse .caret { opacity: 0.7; font-size: 10px; }
 .anim-progress { flex-basis: 100%; height: 3px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
 .anim-progress > div { height: 100%; width: 0; background: var(--accent); }
 #rig-pop {
@@ -201,6 +205,42 @@ button.mini { padding: 2px 7px; font-size: 11px; }
 #export-go { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .acc.rm { color: var(--muted); font-size: 12px; }
 #anim-bar select.on { border-color: var(--accent); color: #fff; }
+
+/* Animation browser: a drawer that slides in from the right edge of the view. */
+#anim-pop {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 7; width: min(330px, 86%);
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 10px 10px;
+  background: rgba(30, 33, 40, 0.94); backdrop-filter: blur(6px); border-left: 1px solid var(--border);
+  box-shadow: -14px 0 34px rgba(0, 0, 0, 0.35);
+  transform: translateX(104%); visibility: hidden;
+  transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.32s;
+}
+#anim-pop.open { transform: none; visibility: visible; transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+main:has(#export-panel:not([hidden])) #anim-pop { right: 444px; }
+main:has(#anim-pop.open) #anim-bar { left: calc((100% - min(330px, 86%)) / 2); max-width: calc(100% - min(330px, 86%) - 24px); transition: left 0.32s; }
+.anim-pop-head { flex: none; display: flex; gap: 8px; align-items: center; }
+.anim-pop-title { font-size: 13px; font-weight: 600; margin-right: auto; }
+.anim-search { flex: none; width: 100%; padding: 7px 10px; font-size: 13px; }
+.anim-close { padding: 2px 10px; font-size: 18px; line-height: 1; }
+.anim-tabs { flex: none; display: flex; flex-wrap: wrap; gap: 4px; }
+.anim-tab { padding: 3px 8px; font-size: 11.5px; border-radius: 999px; white-space: nowrap; }
+.anim-tab .n { margin-left: 4px; color: var(--muted); font-size: 10.5px; }
+.anim-tab.on { border-color: var(--accent); color: #fff; background: #2f3a55; }
+.anim-grid {
+  flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 5px; align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); padding-right: 2px;
+}
+.anim-group { grid-column: 1 / -1; margin: 8px 2px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.anim-group:first-child { margin-top: 0; }
+.anim-clip { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 6px 9px; font-size: 12px; text-align: left; }
+.anim-clip > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anim-clip .loop { color: var(--muted); font-size: 12px; }
+.anim-clip.on { border-color: var(--accent); color: #fff; background: #2f3a55; }
+@media (prefers-reduced-motion: reduce) { #anim-pop, #anim-pop.open { transition: none; } }
+@media (max-width: 640px) {
+  .anim-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  #anim-bar .anim-browse { max-width: 140px; }
+}
 #anim-bar { flex-wrap: nowrap; }
 #anim-bar .anim-progress { position: absolute; left: 10px; right: 10px; bottom: 2px; flex-basis: auto; height: 2px; }
 main:has(#export-panel:not([hidden])) #anim-bar { left: calc((100% - 444px) / 2); max-width: calc(100% - 468px); }

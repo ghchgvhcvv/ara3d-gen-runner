@@ -330,12 +330,21 @@ for (const [label, p] of cases) {
         const restLow = low(A.positions(A.bind()) as number[][]);
         let clipLow = Infinity;
         for (let i = 0; i <= 60; i++) clipLow = Math.min(clipLow, low(A.positions(A.frame(c, (i / 60) * c.duration)) as number[][]));
-        if (Math.abs(clipLow - restLow) > 0.015) fail(`${label}: mocap ${id} lowest joint ${(clipLow * 100).toFixed(1)} cm vs rest ${(restLow * 100).toFixed(1)} cm`);
+        if (Math.abs(clipLow - restLow) > 0.015)
+          fail(`${label}: mocap ${id} lowest joint ${(clipLow * 100).toFixed(1)} cm vs rest ${(restLow * 100).toFixed(1)} cm`);
         if (c.loop) {
           const a = A.positions(A.frame(c, 0)), b = A.positions(A.frame(c, c.duration));
           const gap = Math.max(...a.map((p, k) => Math.hypot(p[0] - b[k][0], p[1] - b[k][1], p[2] - b[k][2])));
           if (gap > 0.005) fail(`${label}: mocap ${id} loop gap ${(gap * 100).toFixed(1)} cm`);
         }
+      }
+    // Chained clips meet where they join (largest joint gap under 3 cm).
+    if (ch.rig && label.startsWith('rig'))
+      for (const [a, b] of [['idle', 'sit_down'], ['stand_up', 'idle'], ['sit_down', 'sit_idle'], ['sit_idle', 'stand_up'], ['lie_down', 'sleep'], ['sleep', 'get_up_face_up']]) {
+        const A = new Animator(ch.rig), ca = clipById.get(a)!, cb = clipById.get(b)!;
+        const pa = A.positions(A.frame(ca, ca.duration)), pb = A.positions(A.frame(cb, 0));
+        const gap = Math.max(...pa.map((p, k) => Math.hypot(p[0] - pb[k][0], p[1] - pb[k][1], p[2] - pb[k][2])));
+        if (gap > 0.03) fail(`${label}: ${a} -> ${b} jump of ${(gap * 100).toFixed(1)} cm`);
       }
     if (label.startsWith('preset') || label.startsWith('seed 1') || label.startsWith('rig') || label.startsWith('look everything') || label === 'weapon rifle game T' || label.startsWith('face'))
       await checkExports(ch, label);

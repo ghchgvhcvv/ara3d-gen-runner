@@ -8,7 +8,7 @@ import type { Vec3 } from '../math';
 import { boneFor } from '../rig/poses';
 import { quatOf, type Rig } from '../rig/rig';
 import { clipById, type Ch, type Clip, type HandTarget, type Sample } from './clips';
-import { qaxis, qconj, qfromTo, QI, qmul, qrot, type Q } from './quat';
+import { qaxis, qconj, qfromTo, QI, qmul, qrot, type Q, qslerp } from './quat';
 
 export interface Frame {
   /** Local rotation per bone (relative to its parent), as exported / applied to three.js bones. */
@@ -289,6 +289,16 @@ export class Animator {
   }
 
   private frameOf(s: Sample, clip: Clip, time: number, opts: { rootMotion?: boolean; noSupport?: boolean }): Frame {
+    if (s.blend && s.blend.w > 0) {
+      const w = Math.min(1, s.blend.w);
+      const a = this.frameOf({ ...s, blend: undefined }, clip, time, opts), b = this.frameOf(s.blend.sample, clip, time, opts);
+      const rootPos = new Map<number, Vec3>();
+      for (const [i, p] of a.rootPos) {
+        const q = b.rootPos.get(i) ?? p;
+        rootPos.set(i, [p[0] + (q[0] - p[0]) * w, p[1] + (q[1] - p[1]) * w, p[2] + (q[2] - p[2]) * w]);
+      }
+      return { ...a, rot: a.rot.map((r, i) => qslerp(r, b.rot[i], w)), rootPos };
+    }
     const left = s.ik?.Left;
     if (left?.support && !opts.noSupport && this.socket >= 0) {
       // Two passes: solve without the support hand, see where the weapon ended up, then
@@ -356,16 +366,24 @@ export class Animator {
 
   private mocapRests = new Map<string, Q>();
   private mocapGrounds = new Map<string, number>();
-  private mocapGround(key: string, clip: Clip): number {
+  /** Grounding key: per clip, or shared by chained cuts. */
+  private groundKey = (m: NonNullable<Sample['mocap']>) => m.anchor?.key ?? m.key;
+  private mocapGround(m: NonNullable<Sample['mocap']>, clip: Clip): number {
+    const key = this.groundKey(m);
     let g = this.mocapGrounds.get(key);
     if (g === undefined) {
       this.mocapGrounds.set(key, 0);
       let low = Infinity;
-      for (let n = 0; n <= 120; n++) {
-        const t = (n / 120) * clip.duration;
-        const { pos } = this.solve(clip.sample(t), clip, t, {});
+      if (m.anchor) {
+        // Chained cuts: the reference pose (feet planted) touches the floor.
+        const { pos } = this.solve({ bones: {}, root: {}, mocap: { ...m, rot: m.anchor.rot, hips: m.anchor.hips } }, clip, 0, {});
         for (const i of this.feet) low = Math.min(low, pos[i][1]);
-      }
+      } else
+        for (let n = 0; n <= 120; n++) {
+          const t = (n / 120) * clip.duration;
+          const { pos } = this.solve(clip.sample(t), clip, t, {});
+          for (const i of this.feet) low = Math.min(low, pos[i][1]);
+        }
       g = this.feet.length ? this.restFootY - low : 0;
       this.mocapGrounds.set(key, g);
     }
@@ -408,6 +426,8 @@ export class Animator {
     const k = this.scale;
     const rootRot = qmul(qaxis([0, 1, 0], r.yaw ?? 0), qaxis([1, 0, 0], r.pitch ?? 0));
     const ikDone: Record<string, { T: Vec3 } | undefined> = {};
+    // Motion capture: its floor offset is needed while solving (toes), so it's settled first.
+    const mocapShift = s.mocap ? this.mocapGround(s.mocap, clip) : 0;
     B.forEach((b, i) => {
       const g = this.names[i];
       const ch: Ch | undefined = g ? s.bones[g] : undefined;
@@ -450,7 +470,7 @@ export class Animator {
         // Toes bend at the ball of the foot instead of pushing their tips into the floor when the
         // heel lifts (the capture's toes are too noisy to use).
         const len = Math.hypot(b.tail[0] - b.head[0], b.tail[1] - b.head[1], b.tail[2] - b.head[2]);
-        const floor = b.tail[1] - (this.mocapGrounds.get(s.mocap!.key) ?? 0);
+        const floor = b.tail[1] - mocapShift;
         const d = qrot(world[i], [0, 1, 0]);
         if (pos[i][1] + d[1] * len < floor) {
           const dy = Math.max(-1, Math.min(1, (floor - pos[i][1]) / len));
@@ -465,9 +485,8 @@ export class Animator {
     B.forEach((b, i) => (rot[i] = b.parent < 0 ? world[i] : qmul(qconj(world[b.parent]), world[i])));
     if (s.mocap) {
       // Motion capture keeps its own hips height; one offset per clip puts its lowest step on the floor.
-      const shift = this.mocapGround(s.mocap.key, clip);
-      for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + shift, p[2]]);
-      for (const p of pos) p[1] += shift;
+      for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + mocapShift, p[2]]);
+      for (const p of pos) p[1] += mocapShift;
     }
     if (r.ground || r.lift) {
       // Shift the root so the lowest foot rests on the floor.
@@ -485,7 +504,10 @@ export class Animator {
         const clear = (/(Hand|Foot|ToeBase)$/.test(n) ? 0.04 : 0.07) * k;
         need = Math.max(need, clear - pos[i][1]);
       });
-      if (need > 0) for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + need, p[2]]);
+      if (need > 0) {
+        for (const [i, p] of rootPos) rootPos.set(i, [p[0], p[1] + need, p[2]]);
+        for (const p of pos) p[1] += need;
+      }
     }
     return { frame: { rot, rootPos }, world, pos };
   }

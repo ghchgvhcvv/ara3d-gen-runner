@@ -154,7 +154,7 @@ const deathForward: Clip = {
 // --- Getting up --------------------------------------------------------------------------------
 
 /** From lying on the back: sit up, tuck the feet in, push off the ground and stand. */
-const getUpFaceUp: Clip = {
+export const getUpFaceUp: Clip = {
   id: 'get_up_face_up', name: 'Get up (from back)', category: 'Reactions', duration: 2.2, loop: false,
   sample: (t) => {
     const T = [0, 0.55, 1.0, 1.45, 1.85, 2.2];

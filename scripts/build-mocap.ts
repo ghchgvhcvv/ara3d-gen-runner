@@ -15,8 +15,8 @@ const out: Record<string, MocapData> = {};
 for (const t of MOCAP_TAKES) {
   const src = parseBvh(readFileSync(join(ROOT, 'vendor/mocap/cmu', `${t.take}.bvh`), 'utf8'));
   const bvh = t.mirror ? mirrorBvh(src) : src;
-  const clip = mocapClip(bvh, { ...t.cut, id: t.id, name: t.id, category: 'Locomotion', loop: t.loop });
-  out[t.id] = bakeMocap(clip, 60, t.hands);
+  const clip = mocapClip(bvh, { ...t.cut, id: t.id, name: t.id, category: 'Locomotion', loop: t.loop, take: t.take });
+  out[t.id] = bakeMocap(clip, 60, t.hands, t.ground);
   console.log(`[build-mocap] ${t.id.padEnd(14)} ${t.take}  ${clip.duration.toFixed(2)} s  ${(out[t.id].rot.length / 1024).toFixed(0)} KB`);
 }
 const src = `/**

@@ -10,7 +10,7 @@
 import type { Vec3 } from '../math';
 import { fingers, fist } from './clips/helpers';
 import type { Ch, Clip, ClipCategory, Sample } from './clips/types';
-import { qaxis, qconj, qfromTo, qmul, qrot, type Q } from './quat';
+import { qaxis, qconj, qfromTo, qmul, qrot, qslerp, type Q } from './quat';
 
 interface BvhJoint {
   name: string;
@@ -140,6 +140,11 @@ export interface MocapSample {
   hips: Vec3;
   /** Key for caching rest alignments. */
   key: string;
+  /**
+   * Chained cuts of one take: the pose at their shared reference (feet planted) and a key shared
+   * by the group. They are grounded once from that pose, so they meet where they join.
+   */
+  anchor?: { rot: Record<string, Q>; hips: Vec3; key: string };
 }
 
 export interface MocapOptions {
@@ -155,6 +160,17 @@ export interface MocapOptions {
   /** Seconds in the recording where the actor holds their head neutrally (default: the whole cut),
    * for clips whose head pose is the point (a sob keeps the head bowed). */
   neutral?: [number, number];
+  /**
+   * Seconds in the recording of a shared reference, for clips cut from one take that chain (sit
+   * down -> sit idle -> stand up): they all face the way the hips face then, place the hips
+   * relative to that moment (no travel removed or centring), and share the take's floor and foot
+   * calibration, so they meet where they join.
+   */
+  ref?: number;
+  /** With `ref`: seconds in the recording whose hips position is the origin (default: `ref`). */
+  origin?: number;
+  /** Name of the take (groups chained cuts that share `ref`). */
+  take?: string;
 }
 
 export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
@@ -181,7 +197,7 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
     const neutral = qconj([acc[0] / l, acc[1] / l, acc[2] / l, acc[3] / l]);
     poses.forEach((P, f) => {
       P.world[headJ] = qmul(P.world[chestJ], qmul(rel[f], neutral));
-      P.world[neckJ] = slerp(P.world[chestJ], P.world[headJ], 0.6);
+      P.world[neckJ] = qslerp(P.world[chestJ], P.world[headJ], 0.6);
     });
   }
   const mapped = bvh.joints.map((j, k) => [CMU_MAP[j.name], k] as const).filter(([g]) => !!g) as [string, number][];
@@ -209,9 +225,10 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
   // Face +Z: along the travel for clips that move, else the way the hips face at the start.
   const p0 = poses[f0].hips, p1 = poses[f1].hips;
   const moved = Math.hypot(p1[0] - p0[0], p1[2] - p0[2]) / leg / duration > 0.15;
-  const fwd = moved ? [p1[0] - p0[0], 0, p1[2] - p0[2]] : qrot(poses[f0].world[0], [0, 0, 1]);
+  const fr = o.ref !== undefined ? Math.min(poses.length - 1, Math.round(o.ref / ft)) : -1;
+  const fwd = fr >= 0 ? qrot(poses[fr].world[0], [0, 0, 1]) : moved ? [p1[0] - p0[0], 0, p1[2] - p0[2]] : qrot(poses[f0].world[0], [0, 0, 1]);
   let yaw = -Math.atan2(fwd[0], fwd[2]);
-  if (o.loop) {
+  if (o.loop && fr < 0) {
     // Face the average way the hips point (actors drift a few degrees off their path).
     let sx = 0, sz = 0;
     for (let f = f0; f <= f1; f++) {
@@ -227,11 +244,13 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
     P.hips = qrot(turn, P.hips);
   }
   // In place: remove the straight-line travel between the first and last frame.
-  const q0 = poses[f0].hips, q1 = poses[f1].hips;
-  const vel: Vec3 = [(q1[0] - q0[0]) / duration, 0, (q1[2] - q0[2]) / duration];
+  // (With a reference, hips are placed relative to it instead.)
+  const fo = fr >= 0 && o.origin !== undefined ? Math.min(poses.length - 1, Math.round(o.origin / ft)) : fr;
+  const q0 = poses[fo >= 0 ? fo : f0].hips, q1 = poses[f1].hips;
+  const vel: Vec3 = fr >= 0 ? [0, 0, 0] : [(q1[0] - q0[0]) / duration, 0, (q1[2] - q0[2]) / duration];
   // One-shots stay centred on their average position (an actor who walks to a stool stays in view).
   const mid: Vec3 = [0, 0, 0];
-  if (!o.loop) {
+  if (!o.loop && fr < 0) {
     for (let f = f0; f <= f1; f++) {
       const tt = (f - f0) * ft;
       mid[0] += (poses[f].hips[0] - q0[0] - vel[0] * tt) / (f1 - f0 + 1);
@@ -256,7 +275,9 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
     }
     return low;
   });
-  const floor = Math.min(...footLow.slice(f0, f1 + 1));
+  // Floor and foot calibration come from the cut, or the whole take for chained cuts.
+  const [c0, c1] = fr >= 0 ? [0, poses.length - 1] : [f0, f1];
+  const floor = Math.min(...footLow.slice(c0, c1 + 1));
   // Travel in m/s at 1.8 m height (hips about 0.95 m up).
   const travel: [number, number, number] = [(vel[0] / leg) * 0.95, 0, (vel[2] / leg) * 0.95];
   const dir: Record<string, Vec3> = {};
@@ -270,10 +291,12 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
   }
   // Loops: spread the end-to-start mismatch over the cycle so the last frame meets the first.
   const seam = new Map<number, Q>();
-  let seamY = 0;
+  const seamH: Vec3 = [0, 0, 0];
   if (o.loop) {
     for (const [, k] of mapped) seam.set(k, qmul(poses[f0].world[k], qconj(poses[f1].world[k])));
-    seamY = poses[f0].hips[1] - poses[f1].hips[1];
+    // Hips: the height, and the sideways drift when no travel is removed (chained cuts).
+    seamH[1] = poses[f0].hips[1] - poses[f1].hips[1];
+    if (fr >= 0) [seamH[0], seamH[2]] = [poses[f0].hips[0] - poses[f1].hips[0], poses[f0].hips[2] - poses[f1].hips[2]];
   }
   // Calibration for our wider bodies: CMU actors hold the upper arms almost vertical, the clavicles
   // a little raised and the feet close together, which presses the arms into the torso, bunches
@@ -289,12 +312,12 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
     // near its lowest), keeping the source's rest toe-out.
     const k = ankle[s > 0 ? 0 : 1];
     if (k < 0) continue;
-    const ys = ankleY[s > 0 ? 0 : 1].slice(f0, f1 + 1);
+    const ys = ankleY[s > 0 ? 0 : 1].slice(c0, c1 + 1);
     const lowest = Math.min(...ys);
     const up: Vec3 = [0, 0, 0];
     ys.forEach((y, n) => {
       if (y > lowest + 0.05 * leg) return;
-      const u = qrot(qconj(poses[f0 + n].world[k]), [0, 1, 0]);
+      const u = qrot(qconj(poses[c0 + n].world[k]), [0, 1, 0]);
       for (let d = 0; d < 3; d++) up[d] += u[d];
     });
     const tip = bvh.joints[k].tip;
@@ -303,6 +326,13 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
   }
   const idle: Record<string, Ch> = {};
   fingers(idle, 14);
+  const anchor = fr >= 0
+    ? {
+      rot: Object.fromEntries(mapped.map(([g, k]) => [g, poses[fr].world[k]])) as Record<string, Q>,
+      hips: [(poses[fr].hips[0] - q0[0]) / leg, (poses[fr].hips[1] - floor) / leg, (poses[fr].hips[2] - q0[2]) / leg] as Vec3,
+      key: `${o.take ?? o.id}@${o.ref}`,
+    }
+    : undefined;
   return {
     id: o.id, name: o.name, category: o.category, duration, loop: o.loop,
     travel: Math.hypot(...travel) > 0.05 ? travel : undefined,
@@ -313,14 +343,14 @@ export function mocapClip(bvh: Bvh, o: MocapOptions): Clip {
       const rot: Record<string, Q> = {};
       const tt = (fa - f0 + w) * ft;
       for (const [g, k] of mapped) {
-        const q = slerp(A.world[k], B.world[k], w);
+        const q = qslerp(A.world[k], B.world[k], w);
         const c = seam.get(k);
-        rot[g] = c ? qmul(slerp([0, 0, 0, 1], c, tt / duration), q) : q;
+        rot[g] = c ? qmul(qslerp([0, 0, 0, 1], c, tt / duration), q) : q;
       }
       const h = A.hips.map((v, d) => v + (B.hips[d] - v) * w);
-      h[1] += (seamY * tt) / duration;
+      for (let d = 0; d < 3; d++) h[d] += (seamH[d] * tt) / duration;
       const hips: Vec3 = [(h[0] - q0[0] - vel[0] * tt - mid[0]) / leg, (h[1] - floor) / leg, (h[2] - q0[2] - vel[2] * tt - mid[2]) / leg];
-      const mocap: MocapSample = { rot, dir, bias, hips, key: o.id };
+      const mocap: MocapSample = { rot, dir, bias, hips, key: o.id, anchor };
       return { bones: { ...idle }, root: {}, mocap } as Sample;
     },
   };
@@ -342,6 +372,10 @@ export interface MocapData {
   bias: Record<string, Q>;
   /** Hand pose (the capture has no fingers): relaxed (default) or closed fists. */
   hands?: 'fist';
+  /** Pin the lowest foot to the floor every frame (clips whose feet stay planted, like sitting). */
+  ground?: boolean;
+  /** Chained cuts: the shared reference pose (bones in `bones` order, xyzw) and its group. */
+  anchor?: { rot: number[]; hips: Vec3; key: string };
 }
 
 const round = (v: number[], k = 1e5) => v.map((x) => Math.round(x * k) / k);
@@ -359,7 +393,7 @@ function fromBase64(s: string): Int16Array {
 }
 
 /** Sample a retargeted BVH clip (mocapClip) into compact data, `fps` frames per second. */
-export function bakeMocap(clip: Clip, fps = 60, hands?: 'fist'): MocapData {
+export function bakeMocap(clip: Clip, fps = 60, hands?: 'fist', ground?: boolean): MocapData {
   const n = Math.max(2, Math.round(clip.duration * fps) + 1);
   const first = clip.sample(0).mocap!;
   const bones = Object.keys(first.rot);
@@ -378,6 +412,8 @@ export function bakeMocap(clip: Clip, fps = 60, hands?: 'fist'): MocapData {
     dir: Object.fromEntries(Object.entries(first.dir).map(([k, v]) => [k, round(v) as Vec3])),
     bias: Object.fromEntries(Object.entries(first.bias).map(([k, v]) => [k, round(v) as Q])),
     ...(hands ? { hands } : {}),
+    ...(ground ? { ground } : {}),
+    ...(first.anchor ? { anchor: { rot: round(bones.flatMap((g) => first.anchor!.rot[g])), hips: round(first.anchor.hips) as Vec3, key: first.anchor.key } } : {}),
   };
 }
 
@@ -397,6 +433,11 @@ export function clipFromMocap(d: MocapData, meta: { id: string; name: string; ca
   };
   const unit = (v: Q): Q => { const l = Math.hypot(...v); return [v[0] / l, v[1] / l, v[2] / l, v[3] / l]; };
   const bias = Object.fromEntries(Object.entries(d.bias).map(([k, v]) => [k, unit(v)]));
+  const anchor = d.anchor && {
+    rot: Object.fromEntries(d.bones.map((g, b) => [g, unit(d.anchor!.rot.slice(b * 4, b * 4 + 4) as Q)])),
+    hips: d.anchor.hips,
+    key: d.anchor.key,
+  };
   const idle: Record<string, Ch> = {};
   if (d.hands === 'fist') fist(idle);
   else fingers(idle, 14);
@@ -406,10 +447,10 @@ export function clipFromMocap(d: MocapData, meta: { id: string; name: string; ca
       const x = (Math.max(0, Math.min(d.duration, t)) / d.duration) * last;
       const fa = Math.min(last, Math.floor(x)), fb = Math.min(last, fa + 1), w = x - fa;
       const rot: Record<string, Q> = {};
-      d.bones.forEach((g, b) => (rot[g] = slerp(q(fa, b), q(fb, b), w)));
+      d.bones.forEach((g, b) => (rot[g] = qslerp(q(fa, b), q(fb, b), w)));
       const hips = [0, 1, 2].map((k) => (H[fa * 3 + k] + (H[fb * 3 + k] - H[fa * 3 + k]) * w) / 10000) as Vec3;
-      const mocap: MocapSample = { rot, dir: d.dir, bias, hips, key: meta.id };
-      return { bones: { ...idle }, root: {}, mocap };
+      const mocap: MocapSample = { rot, dir: d.dir, bias, hips, key: meta.id, anchor };
+      return { bones: { ...idle }, root: d.ground ? { ground: true } : {}, mocap };
     },
   };
 }
@@ -439,19 +480,4 @@ function smooth(poses: { world: Q[]; hips: Vec3 }[], r: number): { world: Q[]; h
   });
 }
 
-function slerp(a: Q, b: Q, t: number): Q {
-  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-  const s = d < 0 ? -1 : 1;
-  d *= s;
-  if (d > 0.9995) {
-    const r: Q = [a[0] + (s * b[0] - a[0]) * t, a[1] + (s * b[1] - a[1]) * t, a[2] + (s * b[2] - a[2]) * t, a[3] + (s * b[3] - a[3]) * t];
-    const l = Math.hypot(...r);
-    return [r[0] / l, r[1] / l, r[2] / l, r[3] / l];
-  }
-  const th = Math.acos(d), sn = Math.sin(th);
-  const ka = Math.sin((1 - t) * th) / sn, kb = (Math.sin(t * th) / sn) * s;
-  const r: Q = [a[0] * ka + b[0] * kb, a[1] * ka + b[1] * kb, a[2] * ka + b[2] * kb, a[3] * ka + b[3] * kb];
-  const l = Math.hypot(...r);
-  return [r[0] / l, r[1] / l, r[2] / l, r[3] / l];
-}
 
