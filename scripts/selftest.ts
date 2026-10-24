@@ -261,6 +261,7 @@ for (const e of EARRINGS) cases.push([`look earrings ${e}`, { ...DEFAULT_PARAMS,
 // Faces: every expression, face shapes off (expression baked in), and on the low-detail body.
 for (const e of EXPRESSIONS) cases.push([`face ${e}`, { ...DEFAULT_PARAMS, expression: e, detail: e === 'happy' ? 'high' : 'medium' }]);
 cases.push(['face shapes off, angry', { ...DEFAULT_PARAMS, expression: 'angry', faceShapes: false }]);
+cases.push(['face speech shapes off', { ...DEFAULT_PARAMS, speechShapes: false }]);
 cases.push(['face low detail', { ...DEFAULT_PARAMS, expression: 'sad', detail: 'low' }]);
 for (const tv of [...lib.catalog.teeth.map((x) => x.id), 'none']) cases.push([`face teeth ${tv}`, { ...DEFAULT_PARAMS, teeth: tv, expression: 'laughing' }]);
 cases.push(['look everything, low', { ...DEFAULT_PARAMS, outfit: 'none', hair: 'box_braids', facialHair: 'full_beard', tattoos: [...TATTOOS], earrings: 'big_hoops', weapon: 'sword', detail: 'low' }]);
@@ -282,6 +283,17 @@ for (const [label, p] of cases) {
     if ((p.teeth ?? 'teeth_base') !== 'none' !== mats.includes('Teeth')) fail(`${label}: teeth present=${mats.includes('Teeth')}`);
     if (p.faceShapes !== false && !ch.mesh.morphs) fail(`${label}: no face shapes`);
     if (ch.mesh.morphs) for (const d of ch.mesh.morphs.deltas) if (d.length !== ch.mesh.positions.length) { fail(`${label}: face shape size`); break; }
+    if (ch.mesh.morphs) {
+      const names = ch.mesh.morphs.names, visemes = names.filter((n) => n.startsWith('viseme_')).length;
+      if (visemes !== (p.speechShapes === false ? 0 : 14)) fail(`${label}: ${visemes} speech shapes`);
+      // The lower teeth drop with an open "aa".
+      const aa = names.indexOf('viseme_aa'), g = ch.mesh.groups.find((x) => ch.mesh.materials[x.material]?.name === 'Teeth');
+      if (aa >= 0 && g) {
+        let moved = 0;
+        for (const v of g.indices) moved = Math.max(moved, -ch.mesh.morphs.deltas[aa][v * 3 + 1]);
+        if (moved < 0.003) fail(`${label}: teeth don't follow viseme_aa (${(moved * 1000).toFixed(1)} mm)`);
+      }
+    }
     if (p.weapon && p.weapon !== 'none') {
       if (!!ch.weapon !== !!ch.rig) fail(`${label}: weapon present=${!!ch.weapon} rigged=${!!ch.rig}`);
       if (ch.weapon && ch.rig) {

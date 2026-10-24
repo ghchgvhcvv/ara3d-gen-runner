@@ -44,8 +44,9 @@ export interface MeshData {
   morphs?: { names: string[]; deltas: Float32Array[]; defaults: number[] };
 }
 
-/** Morph offsets moved by more than this (metres) count as changed (for sparse exports). */
-export const MORPH_EPSILON = 1e-6;
+/** Morph offsets moved by more than this (metres) count as changed (for sparse exports): 0.05 mm,
+ * far below anything visible, keeps the many barely-moved vertices out of the files. */
+export const MORPH_EPSILON = 5e-5;
 
 /** Positions with the morphs applied at the given weights (e.g. to bake an expression into an OBJ). */
 export function morphedPositions(m: MeshData, weights?: number[]): Float32Array {

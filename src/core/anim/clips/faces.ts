@@ -6,6 +6,7 @@
  */
 import { type Clip } from './types';
 import { track } from './helpers';
+import { speechFace, speechStress } from './speech';
 
 type Face = Partial<Record<string, number>>;
 type FaceFn = (t: number, duration: number) => Face;
@@ -48,6 +49,10 @@ const FACES: Record<string, FaceFn> = {
   hit_right: hitFace,
   wave: constant({ mouthSmile: 0.7, eyeSquintLeft: 0.25, eyeSquintRight: 0.25, browOuterUpLeft: 0.2, browOuterUpRight: 0.2 }),
   cheer: constant({ mouthSmile: 0.9, jawOpen: 0.4, eyeSquintLeft: 0.3, eyeSquintRight: 0.3 }),
+  talk: (t) => {
+    const st = speechStress(t);
+    return { ...speechFace(t), browInnerUp: 0.25 * st, browOuterUpLeft: 0.3 * st, browOuterUpRight: 0.3 * st };
+  },
   laugh: (t, d) => {
     const ha = Math.abs(Math.sin((t / d) * Math.PI * 12));
     return { mouthSmile: 1, jawOpen: 0.2 + 0.35 * ha, mouthUpperUp: 0.3 + 0.2 * ha, eyeSquintLeft: 0.6, eyeSquintRight: 0.6, browOuterUpLeft: 0.25, browOuterUpRight: 0.25 };
