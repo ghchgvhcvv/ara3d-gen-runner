@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Bicycle, BICYCLE_CLIP } from './bicycle';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Character } from '../core/human';
@@ -22,6 +23,9 @@ export class Viewer {
   /** Preview root motion (travel) for locomotion clips. */
   rootMotion = false;
   private lastFrame: Frame | null = null;
+  /** The bicycle shown while the Ride bicycle clip plays (built for the current character). */
+  private bike: Bicycle | null = null;
+  private vehicle: 'none' | 'bicycle' = 'none';
   private blendFrom: Frame | null = null;
   private blendStart = 0;
   /** Called with (clip, time) every frame while a clip plays (for the timeline UI). */
@@ -29,6 +33,8 @@ export class Viewer {
   private loader = new THREE.TextureLoader();
   private texCache = new Map<string, THREE.Texture>();
   private framedHeight = 0;
+  /** The shown character's height (the close-up always follows it). */
+  private height = 0;
   wireframe = false;
   showSkeleton = false;
 
@@ -188,10 +194,14 @@ export class Viewer {
     this.scene.add(this.mesh);
     this.drawSkeleton();
     this.animator = ch.rig && this.bones.length ? new Animator(ch.rig, ch.face) : null;
+    this.dropBike();
+    this.vehicle = ch.params.vehicle ?? 'none';
     this.tick();
 
-    // Re-frame only when the height changes noticeably, so tweaking sliders doesn't jump the camera.
-    if (Math.abs(ch.height - this.framedHeight) > 0.2) {
+    // Re-frame only when the height changes noticeably, so tweaking sliders doesn't jump the camera;
+    // the face close-up always follows the face.
+    this.height = ch.height;
+    if (Math.abs(ch.height - this.framedHeight) > 0.2 || (this.faceMode && Math.abs(ch.height - this.framedHeight) > 0.02)) {
       this.framedHeight = ch.height;
       this.frame();
     }
@@ -215,6 +225,7 @@ export class Viewer {
   /** Close-up on the face (or back to full body). */
   focusFace(on: boolean) {
     this.faceMode = on;
+    if (this.height) this.framedHeight = this.height;
     this.frame();
   }
 
@@ -279,7 +290,31 @@ export class Viewer {
       const w = this.blendFrom ? Math.min(1, (now - this.blendStart) / 0.25) : 1;
       want.forEach((x, i) => (inf[i] = inf[i] + (x - inf[i]) * w));
     }
+    this.updateBike(frame);
     this.onTick?.(this.clip, t);
+  }
+
+  /** Ride bicycle shows a bicycle fitted to the character; other clips hide it. */
+  private updateBike(frame: Frame) {
+    const riding = this.clip?.id === BICYCLE_CLIP && this.vehicle === 'bicycle' && !!this.animator;
+    if (riding && !this.bike) {
+      try {
+        this.bike = new Bicycle(this.animator!.rig, this.animator!, this.clip!);
+        this.scene.add(this.bike.group);
+      } catch {
+        return; // rigs without hands or feet: no bike
+      }
+    }
+    if (!this.bike) return;
+    this.bike.group.visible = riding;
+    if (riding) this.bike.update(this.animator!.positions(frame));
+  }
+
+  private dropBike() {
+    if (!this.bike) return;
+    this.scene.remove(this.bike.group);
+    this.bike.dispose();
+    this.bike = null;
   }
 
   /** Play a clip (null = bind pose). One-shot clips hold their last frame. */

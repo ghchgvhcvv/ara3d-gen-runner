@@ -10,9 +10,9 @@ Shape a body, dress it, give it hair, a beard, tattoos and a weapon, pick from 7
 
 ![Presets: African warrior, Yoruba warrior, cyberpunk hacker, Dahomey warrior, FRSC officer, police officer, wasteland survivor, adventurer](docs/media/presets.jpg)
 
-<p align="center"><img src="docs/media/demo.gif" alt="Tattoos, recolouring, animations and weapons in the Ara 3D Gen web app" width="560"></p>
+<p align="center"><img src="docs/media/demo.gif" alt="A motion-captured walk, a face with expressions that talks, and riding a bicycle in Ara 3D Gen" width="560"></p>
 
-<p align="center"><a href="https://ara3dgen.com/media/ara-3d-gen-demo.mp4"><img src="docs/media/video-poster.jpg" alt="Watch the Ara 3D Gen demo video (1:45)" width="720"></a><br><sub>▶ <a href="https://ara3dgen.com/media/ara-3d-gen-demo.mp4">Watch the 1:45 demo</a>: presets, sliders, hair and tattoos, animations, weapons, export and a real game.</sub></p>
+<p align="center"><a href="https://ara3dgen.com/media/ara-3d-gen-whats-new.mp4"><img src="docs/media/whats-new-poster.jpg" alt="Watch what's new in Ara 3D Gen (0:31)" width="720"></a><br><sub>▶ <a href="https://ara3dgen.com/media/ara-3d-gen-whats-new.mp4">What's new (0:31)</a>: a motion-captured walk and run, faces that blink, react and talk, 70 animations and a bicycle. · <a href="https://ara3dgen.com/media/ara-3d-gen-demo.mp4">Full demo (1:45)</a></sub></p>
 
 
 ## Why self-hosted?
@@ -56,6 +56,17 @@ npm run dev            # open http://localhost:5173 (landing page; the app is at
 ```
 
 On Windows, run the same commands in PowerShell, Command Prompt or Git Bash.
+
+### Updating an existing clone
+
+```bash
+git pull
+npm install            # picks up any new or updated dependencies
+npm run setup-assets   # rebuilds public/assets; reuses the data already downloaded, so it takes about a minute
+npm run dev
+```
+
+Re-run `setup-assets` after every update: new versions can add or change generated assets (for example new eye colours), and the app falls back to the old ones until you do. If you have local changes, commit or stash them before `git pull`.
 
 Production build (static files you can host anywhere, e.g. an internal server or GitHub Pages):
 
