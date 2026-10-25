@@ -41,7 +41,7 @@ Online character generators are convenient, but you rent them. Ara 3D Gen is you
 - **Weapons:** rifle, pistol, sword and knife, held on the socket. Export them in the hand or as separate props.
 - **Exports you can trust:** an export panel that lists every file before you download it: static, rigged, or rigged + animations; one file or one per clip; Unity `model@clip` and Godot loop naming.
 - **Share:** one click gives a branded image of your character, a caption and a link that rebuilds the exact character in the app (no server or account needed), with buttons for X, Facebook, LinkedIn, WhatsApp, Reddit and Telegram, plus the system share sheet on phones.
-- **Tested:** `npm test` builds 240 characters and validates every format. `npm run test:gltf` loads the GLBs in three.js and checks every bone of every clip.
+- **Tested:** `npm test` builds 240 characters and validates every format. `npm run test:gltf` loads the GLBs in three.js and checks every bone of every clip. `npm run test:ui` drives the app itself in headless Chrome.
 
 ## Quick start
 
@@ -154,7 +154,7 @@ src/core/
   rig/         skeletons, auto-skinning, T-pose, WeaponR socket
   anim/        clips + the shared evaluator (FK, arm IK, grounding)
 src/export/    glb.ts, fbx.ts (binary writer), obj.ts, index.ts (bundling)
-src/app/       three.js viewer + catalog-driven UI
+src/app/       three.js viewer, generation worker, catalog-driven UI (ui/: one module per part, wired in main.ts)
 ```
 
 ## Clothing

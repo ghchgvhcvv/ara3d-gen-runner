@@ -35,7 +35,8 @@
     "setup-assets": "tsx scripts/setup-assets.ts",
     "build-assets": "tsx scripts/build-assets.ts",
     "test:gltf": "tsx scripts/gltf-check.ts",
-    "build-mocap": "tsx scripts/build-mocap.ts"
+    "build-mocap": "tsx scripts/build-mocap.ts",
+    "test:ui": "tsx scripts/ui-check.ts"
   },
   "dependencies": {
     "fflate": "^0.8.3",
