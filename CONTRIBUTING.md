@@ -13,7 +13,7 @@ npm run setup-assets   # one-time: CC0 MakeHuman data -> public/assets
 npm run dev            # http://localhost:5173 (landing page) and /app/ (the generator)
 ```
 
-Requirements: Node 20+ and git, on Windows, macOS or Linux. `npm run test:gltf` needs Chrome, Chromium or Edge (set `CHROME=/path/to/browser` if it isn't found). Blender is optional; it's only used by the `scripts/blender_*.py` render checks.
+Requirements: Node 20+ and git, on Windows, macOS or Linux. `npm run test:gltf` and `npm run test:ui` need Chrome, Chromium or Edge (set `CHROME=/path/to/browser` if it isn't found). Blender is optional; it's only used by the `scripts/blender_*.py` render checks.
 
 ## Before you open a pull request
 
@@ -21,6 +21,7 @@ Requirements: Node 20+ and git, on Windows, macOS or Linux. `npm run test:gltf` 
 npm run typecheck
 npm test            # builds ~240 characters and validates GLB, FBX, OBJ and every export mode
 npm run test:gltf   # loads exported GLBs with three.js in headless Chrome (rig/animation changes)
+npm run test:ui     # drives the app in headless Chrome: build, slider, preset, animation browser, export (UI changes)
 ```
 
 For visual changes (garments, hair, tattoos, animation), please attach a screenshot or a short clip.
@@ -37,7 +38,7 @@ For visual changes (garments, hair, tattoos, animation), please attach a screens
 | Skeletons and skinning | `src/core/rig/` |
 | Animation clips / evaluator | `src/core/anim/clips/` (one file per set), `src/core/anim/evaluate.ts` |
 | Exporters | `src/export/` (`plan.ts` decides the files, `glb.ts`, `fbx.ts`, `obj.ts` write them) |
-| Web app | `src/app/` (UI in `main.ts`, three.js viewer, generation worker) |
+| Web app | `src/app/`: three.js viewer, generation worker, and the UI in `ui/` (one module per part: sidebar, animation bar, export panel, share dialog, header), wired together in `main.ts` through the store's events (`ui/store.ts`) |
 | Landing page | `index.html`, `src/landing/` (the app itself is `app/index.html`) |
 
 ### Adding a garment
