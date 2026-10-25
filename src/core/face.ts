@@ -209,7 +209,7 @@ function byColumn(tris: Uint32Array, P: Float32Array, xs: number[]): Uint32Array
 }
 
 /**
- * How much of the teeth shows from the front: rays every 0.5 mm over the teeth that hit a tooth
+ * How much of the teeth shows from the front: rays over the teeth (finely spaced up and down) that hit a tooth
  * in front of the face's front-facing skin (or through a gap between the lips). Units:
  * decimetres, face toward +Z.
  */
@@ -228,11 +228,12 @@ export function teethShowing(teeth: Float32Array, teethTris: Uint32Array, coords
     if ([0, 1, 2, 3].some((k) => near(q[k]))) skin.push(q[0], q[1], q[2], q[0], q[2], q[3]);
   }
   const xs: number[] = [];
-  for (let x = x0; x <= x1; x += 0.005) xs.push(x);
+  // 1 mm apart across the mouth, 0.2 mm apart up and down: lip gaps are long and very thin.
+  for (let x = x0; x <= x1; x += 0.01) xs.push(x);
   const T = byColumn(teethTris, teeth, xs), S = byColumn(Uint32Array.from(skin), coords, xs);
   let n = 0;
   xs.forEach((x, i) => {
-    for (let y = y0; y <= y1; y += 0.005) {
+    for (let y = y0; y <= y1; y += 0.002) {
       const t = frontHit(x, y, T[i], teeth);
       if (t > -Infinity && t > frontHit(x, y, S[i], coords, true) + 0.001) n++;
     }
@@ -262,6 +263,8 @@ export function sealLips(
       if (shows(m)) lo = m;
       else hi = m;
     }
-  for (let i = 0; i < coords.length; i++) coords[i] -= upperUp[i] * hi;
-  return hi;
+  // A little more than the least that hides them, so they stay hidden from slightly above or aside.
+  const w = Math.min(0.45, hi + 0.06);
+  for (let i = 0; i < coords.length; i++) coords[i] -= upperUp[i] * w;
+  return w;
 }
