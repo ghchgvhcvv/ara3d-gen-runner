@@ -154,10 +154,12 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
     outfit: 'female_sportsuit01', shoes: 'shoes03', eyebrows: 'eyebrow010', eyelashes: 'eyelashes02', eyes: 'green',
   },
   'Businesswoman': {
+    eyes: 'blackbrown',
     gender: 0, age: 0.6, muscle: 0.45, weight: 0.5, height: 0.6, hair: 'bob02', outfit: 'female_elegantsuit01',
     shoes: 'shoes02', eyebrows: 'eyebrow011', eyelashes: 'eyelashes03', african: 0.8, asian: 0.1, caucasian: 0.1,
   },
   'Heavy brute': {
+    eyes: 'blackbrown',
     gender: 1, age: 0.62, muscle: 0.95, weight: 0.85, height: 0.72, proportions: 0.4, african: 0.85, asian: 0.05, caucasian: 0.1, hair: 'none',
     outfit: 'male_worksuit01', shoes: 'shoes04', eyebrows: 'eyebrow003', facialHair: 'full_beard', beardColor: '#16110d',
     modifiers: { 'head/head-fat': 0.4, 'chin/chin-width': 0.5, 'neck/neck-scale-horiz': 0.5, 'chin/chin-prominent': 0.4 },
@@ -201,6 +203,7 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
     modifiers: { 'chin/chin-prominent': 0.3, 'head/head-square': 0.3 },
   },
   'The African Warrior': {
+    eyes: 'blackbrown',
     gender: 1, age: 0.55, muscle: 1, weight: 0.55, height: 0.55, proportions: 1, african: 1, asian: 0, caucasian: 0,
     hair: 'none', eyebrows: 'eyebrow003', outfit: 'none', top: 'none', bottom: 'loincloth', underwear: false, shoes: 'none',
     accessories: [],
@@ -214,6 +217,7 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
     },
   },
   'The Yoruba Warrior': {
+    eyes: 'blackbrown',
     gender: 1, age: 0.55, muscle: 0.75, weight: 0.5, height: 0.48, african: 1, asian: 0, caucasian: 0,
     hair: 'none', eyebrows: 'eyebrow003', outfit: 'none', top: 'long_tunic', bottom: 'trousers', shoes: 'sandals',
     tattoos: ['face_marks'], facialHair: 'short_beard', beardColor: '#120e0b', tattooInk: '#1a1210',
@@ -225,12 +229,14 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
     },
   },
   'The Maasai Warrior': {
+    eyes: 'blackbrown',
     gender: 1, age: 0.45, muscle: 0.6, weight: 0.3, height: 0.6, proportions: 0.8, african: 1, asian: 0, caucasian: 0,
     hair: 'none', eyebrows: 'eyebrow001', outfit: 'none', top: 'none', bottom: 'wrapper_knee', shoes: 'sandals',
     accessories: ['shoulder_drape', 'bead_collar', 'bead_armbands', 'bead_headband'],
     garmentStyles: { wrapper_knee: { pattern: 'shuka', color: '#c81e1e', color2: '#1a2a6a' }, shoulder_drape: { pattern: 'shuka', color: '#c81e1e', color2: '#1a2a6a' } },
   },
   'The Zulu Warrior': {
+    eyes: 'blackbrown',
     gender: 1, age: 0.5, muscle: 0.9, weight: 0.5, height: 0.5, african: 1, asian: 0, caucasian: 0,
     hair: 'none', eyebrows: 'eyebrow003', outfit: 'none', top: 'none', bottom: 'hide_aprons', shoes: 'none',
     accessories: ['fur_bands', 'feather_headband', 'bead_necklace'],
@@ -238,7 +244,7 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
   },
   'The Dahomey Warrior': {
     gender: 0, age: 0.5, muscle: 0.8, weight: 0.42, height: 0.5, proportions: 0.85, breastSize: 0.45, african: 1, asian: 0, caucasian: 0,
-    hair: 'cornrows', hairColor: '#17120f', earrings: 'small_hoops', eyes: 'brown', eyebrows: 'eyebrow011', eyelashes: 'eyelashes02', outfit: 'none',
+    hair: 'cornrows', hairColor: '#17120f', earrings: 'small_hoops', eyes: 'blackbrown', eyebrows: 'eyebrow011', eyelashes: 'eyelashes02', outfit: 'none',
     top: 'tunic', bottom: 'wrapper_knee', shoes: 'sandals', accessories: ['waist_sash', 'amulet_bandolier', 'arm_guards', 'amulets'],
     garmentStyles: {
       tunic: { pattern: 'asooke', color: '#1f2f5c', color2: '#c9a24a' },
@@ -248,6 +254,7 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
   },
   // Nigeria Police Force, general duty: all-black uniform (black shirt and trousers), black boots and duty belt.
   'The Police Officer (Nigeria)': {
+    eyes: 'blackbrown',
     gender: 1, age: 0.56, muscle: 0.62, weight: 0.55, height: 0.52, african: 1, asian: 0, caucasian: 0,
     hair: 'buzz', facialHair: 'stubble', eyebrows: 'eyebrow003', outfit: 'none',
     top: 'uniform_shirt', bottom: 'uniform_trousers', shoes: 'combat_boots', accessories: ['beret', 'utility_belt'],
@@ -262,6 +269,7 @@ export const PRESETS: Record<string, Partial<HumanParams>> = {
   // FRSC marshal, No. 5b dress (FRSC dress code, 2025 compendium): beige short-sleeve shirt tucked into
   // black trousers, service belt, black boots; maroon beret with cap badge and maroon epaulettes.
   'The FRSC Officer (Nigeria)': {
+    eyes: 'blackbrown',
     gender: 1, age: 0.52, muscle: 0.55, weight: 0.5, height: 0.55, african: 1, asian: 0, caucasian: 0,
     hair: 'buzz', eyebrows: 'eyebrow001', outfit: 'none',
     top: 'uniform_shirt', bottom: 'uniform_trousers', shoes: 'combat_boots', accessories: ['beret', 'belt'],
@@ -324,7 +332,7 @@ export function randomParams(seed: number, cat: Catalog, base: HumanParams = DEF
     modifiers,
     skin: 'auto',
     skinTint: '#ffffff',
-    eyes: pick(r, cat.eyes).id,
+    eyes: eyesFor(r(), mix[0] / sum, mix[1] / sum, cat.eyes),
     eyebrows: pick(r, cat.eyebrows).id,
     eyelashes: pick(r, cat.eyelashes).id,
     hair: pick(r, female ? FEMALE_HAIR : MALE_HAIR),
@@ -394,4 +402,19 @@ export function sanitizeParams(raw: unknown, base: HumanParams = DEFAULT_PARAMS)
     }
   out.garmentStyles = styles;
   return out;
+}
+
+/**
+ * Eye colour to suit the ethnicity mix: mostly black-brown, dark brown or brown for African and Asian
+ * characters, any colour for Caucasian ones. `x` is one random number in 0..1.
+ */
+function eyesFor(x: number, african: number, asian: number, eyes: { id: string }[]): string {
+  const has = (id: string) => eyes.some((e) => e.id === id);
+  const dark = african * 0.95 + asian * 0.85 + (1 - african - asian) * 0.25;
+  if (x < dark) {
+    const u = x / dark;
+    const id = u < 0.25 ? 'blackbrown' : u < 0.65 ? 'darkbrown' : 'brown';
+    return has(id) ? id : has('brown') ? 'brown' : eyes[0].id;
+  }
+  return eyes[Math.min(eyes.length - 1, Math.floor(((x - dark) / (1 - dark)) * eyes.length))].id;
 }

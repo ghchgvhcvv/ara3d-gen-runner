@@ -201,7 +201,8 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
   const hair = find(cat.hair, p.hair);
   const brows = find(cat.eyebrows, p.eyebrows);
   const lashes = find(cat.eyelashes, p.eyelashes);
-  const eyeMat = find(cat.eyes, p.eyes) ?? cat.eyes[0];
+  // Dark and black-brown are built with the assets; older asset builds fall back to brown.
+  const eyeMat = find(cat.eyes, p.eyes) ?? (/^(dark|black)brown$/.test(p.eyes) ? find(cat.eyes, 'brown') : undefined) ?? cat.eyes[0];
   const skin = p.skin === 'auto' ? autoSkin(p, cat.skins) : find(cat.skins, p.skin) ?? autoSkin(p, cat.skins);
   const low = p.detail === 'low';
   const bodyLod = low ? cat.bodies.find((b) => b.id === (p.gender >= 0.5 ? 'male1591' : 'female1605')) : undefined;

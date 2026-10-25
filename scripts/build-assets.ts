@@ -177,6 +177,27 @@ async function material(mhmatPath: string, id: string, kind: ProxyKind | 'skin')
   return mat;
 }
 
+/**
+ * Darken an eye texture's iris: coloured (saturated) pixels go to a deep warm brown, the white
+ * sclera stays, and the blend follows saturation so edges and veins stay soft.
+ */
+async function darkenIris(src: string, file: string, dir: 'textures' | 'thumbs', k = 0.42): Promise<string> {
+  const { data, info } = await sharp(src).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], bl = data[i + 2];
+    const max = Math.max(r, g, bl), min = Math.min(r, g, bl);
+    const sat = max ? (max - min) / max : 0;
+    const iris = Math.min(1, Math.max(0, (sat - 0.18) / 0.3)); // 0 = sclera, 1 = iris
+    // Darker by `k`, and a little less red than MakeHuman's brown.
+    const t = [r * k + 6, g * k + 4, bl * k * 0.95 + 2];
+    data[i] = Math.round(r + (t[0] - r) * iris);
+    data[i + 1] = Math.round(g + (t[1] - g) * iris);
+    data[i + 2] = Math.round(bl + (t[2] - bl) * iris);
+  }
+  await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toFile(join(OUT, dir, file));
+  return file;
+}
+
 async function thumb(src: string, name: string): Promise<string | undefined> {
   if (!existsSync(src)) return undefined;
   const file = `${name}.png`;
@@ -469,6 +490,17 @@ async function main() {
       id, name: pretty(id), tags: [], material: await material(join(eyeDir, f), id, 'eyes'),
       thumb: await thumb(join(eyeDir, `${id}.thumb`), `eyes_${id}`),
     });
+  }
+  // Dark brown and near-black brown (the most common eye colours, missing from MakeHuman's set):
+  // its brown, darkened.
+  const brown = eyes.find((e) => e.id === 'brown');
+  if (brown?.material?.diffuse) {
+    let at = eyes.indexOf(brown) + 1;
+    for (const [id, name, k] of [['darkbrown', 'Dark brown', 0.42], ['blackbrown', 'Black-brown', 0.2]] as const) {
+      const diffuse = await darkenIris(join(OUT, 'textures', brown.material.diffuse), `eyes_${id}.png`, 'textures', k);
+      const thumb = brown.thumb ? await darkenIris(join(OUT, brown.thumb), `eyes_${id}.png`, 'thumbs', k) : undefined;
+      eyes.splice(at++, 0, { id, name, tags: [], material: { ...brown.material, diffuse }, thumb: thumb && `thumbs/${thumb}` });
+    }
   }
   const eyeMesh = await buildProxy(join(SYS, 'eyes/high-poly/high-poly.mhclo'), 'eyes', 'high-poly', false);
   const teeth = await proxiesIn('teeth', 'teeth');

@@ -114,7 +114,7 @@ anatomy dataset, which is CC0 (public domain) since 2020:
   body shape. Skin under clothing is removed to prevent poke-through.
 - **Textures:** 20 photo-based skins (young / middle-aged / old × African / Asian / Caucasian ×
   male / female, picked automatically), plus diffuse and normal maps for clothes, alpha
-  textures for hair and lashes, and 9 eye colours.
+  textures for hair and lashes, and 11 eye colours (MakeHuman's 9 plus dark brown and black-brown, the most common shades).
 
 ## Detail levels
 
