@@ -296,7 +296,11 @@ export async function buildHuman(lib: AssetLibrary, p: HumanParams, opts: BuildO
   const face = (v: number) => regions[v] === 0 || regions[v] === 1;
 
   const parts: [PolyMesh, Material][] = [];
-  parts.push([body, { ...toMaterial(skin.material!), name: 'Skin', color: tint(skin.material!.color, p.skinTint), roughness: 0.55 }]);
+  // MakeHuman gives some skins a 50% grey diffuse colour (young African, old male), meant for its
+  // own lit-sphere shader; as a multiplier it darkens the painted texture to about a fifth, so
+  // the texture is used as painted.
+  const skinBase = skin.material!.color.toLowerCase() === '#808080' ? '#ffffff' : skin.material!.color;
+  parts.push([body, { ...toMaterial(skin.material!), name: 'Skin', color: tint(skinBase, p.skinTint), roughness: 0.55 }]);
   if (looks.overlay) parts.push([hd ? subdivide(looks.overlay[0]) : looks.overlay[0], looks.overlay[1]]);
   parts.push([proxyMesh(pEyes, coords, bskin, faceD), { ...toMaterial(eyeMat.material!), name: 'Eyes', alpha: 'mask' }]);
   if (pBrows && brows) parts.push([proxyMesh(pBrows, coords, bskin, faceD), { ...toMaterial(brows.material!), name: 'Eyebrows' }]);
