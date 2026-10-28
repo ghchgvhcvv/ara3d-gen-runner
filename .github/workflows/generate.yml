@@ -1,0 +1,72 @@
+name: Generate character
+
+# Add this file to your Ara 3D Gen repo (the one with scripts/export-cli.ts), on the default branch.
+# The web app starts it through the GitHub API (workflow_dispatch). run-name carries the job id so
+# the app can find its own run.
+run-name: gen ${{ inputs.job_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: Describe the character
+        required: true
+        type: string
+      job_id:
+        description: Id assigned by the web app (do not change)
+        required: true
+        type: string
+      detail:
+        description: Mesh detail (low ~5-10k, medium ~30-40k, high ~100-120k triangles)
+        required: false
+        type: choice
+        default: medium
+        options: [low, medium, high]
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The CC0 MakeHuman data (~420 MB) is downloaded once, then restored from cache on later runs.
+      - name: Restore character data cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor
+            public/assets
+          key: assets-${{ runner.os }}-${{ hashFiles('scripts/build-assets.ts', 'scripts/setup-assets.ts') }}
+
+      - name: Build character assets
+        run: npm run setup-assets
+
+      - name: Generate character (Ara 3D Gen)
+        env:
+          # Passed through env, never interpolated into a shell command
+          PROMPT: ${{ inputs.prompt }}
+          DETAIL: ${{ inputs.detail }}
+          OUT_DIR: out
+        run: npx tsx scripts/prompt-export.ts
+
+      - name: Upload character
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-${{ inputs.job_id }}
+          path: |
+            out/character.glb
+            out/meta.json
+            out/params.json
+          if-no-files-found: error
+          retention-days: 3
